@@ -1,0 +1,21 @@
+{
+  "coverage_options": {
+    "minimum_coverage": 60
+  },
+  "skip_files": [
+    "test/",
+    "lib/ponteio.ex",
+    "lib/ponteio/application.ex",
+    "lib/ponteio/mailer.ex",
+    "lib/ponteio/repo.ex",
+    "lib/ponteio_web.ex",
+    "lib/ponteio_web/endpoint.ex",
+    "lib/ponteio_web/gettext.ex",
+    "lib/ponteio_web/telemetry.ex",
+    "lib/ponteio_web/components/core_components.ex",
+    "lib/ponteio_web/components/layouts.ex",
+    "lib/ponteio_web/components/layouts/",
+    "lib/ponteio_web/controllers/page_html.ex",
+    "lib/ponteio_web/controllers/page_html/"
+  ]
+}

@@ -1,0 +1,53 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DATABASE_USER:-postgres}
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD:-postgres}
+      POSTGRES_DB: ${DATABASE_NAME:-ponteio_dev}
+    ports:
+      - "${DATABASE_PORT:-5432}:5432"
+    volumes:
+      - ponteio_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DATABASE_USER:-postgres} -d ${DATABASE_NAME:-ponteio_dev}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      MIX_ENV: dev
+      DATABASE_USER: ${DATABASE_USER:-postgres}
+      DATABASE_PASSWORD: ${DATABASE_PASSWORD:-postgres}
+      DATABASE_NAME: ${DATABASE_NAME:-ponteio_dev}
+      DATABASE_HOST: db
+      PHX_HOST: ${PHX_HOST:-localhost}
+      PORT: ${PORT:-4000}
+      SECRET_KEY_BASE: ${SECRET_KEY_BASE:-insecure_dev_secret_key_base_change_me_insecure_dev_secret}
+    ports:
+      - "${PORT:-4000}:4000"
+    volumes:
+      - .:/app
+      - ponteio_deps:/app/deps
+      - ponteio_build:/app/_build
+      - ponteio_node_modules:/app/assets/node_modules
+    command: >
+      sh -c "mix deps.get &&
+             mix ecto.create &&
+             mix ecto.migrate &&
+             mix phx.server"
+
+volumes:
+  ponteio_pgdata:
+  ponteio_deps:
+  ponteio_build:
+  ponteio_node_modules:

@@ -1,0 +1,16 @@
+_build/
+deps/
+cover/
+doc/
+.git/
+.github/
+.claude/
+docs/
+*.md
+!README.md
+.env
+.env.*
+!.env.example
+node_modules/
+priv/static/assets/
+priv/plts/
