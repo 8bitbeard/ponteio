@@ -24,7 +24,8 @@ defmodule Ponteio.MixProject do
       dialyzer: [
         plt_file: {:no_warn, "priv/plts/dialyzer.plt"},
         plt_add_apps: [:mix, :ex_unit]
-      ]
+      ],
+      consolidate_protocols: Mix.env() != :dev
     ]
   end
 
@@ -53,6 +54,10 @@ defmodule Ponteio.MixProject do
   # Type `mix help deps` for examples and options.
   defp deps do
     [
+      {:ash_phoenix, "~> 2.0"},
+      {:sourceror, "~> 1.8", only: [:dev, :test]},
+      {:ash_postgres, "~> 2.0"},
+      {:ash, "~> 3.0"},
       {:phoenix, "~> 1.8.14"},
       {:phoenix_ecto, "~> 4.5"},
       {:ecto_sql, "~> 3.13"},
@@ -88,7 +93,8 @@ defmodule Ponteio.MixProject do
       {:bandit, "~> 1.5"},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
-      {:excoveralls, "~> 0.18", only: :test}
+      {:excoveralls, "~> 0.18", only: :test},
+      {:igniter, "~> 0.6", only: [:dev, :test], runtime: false}
     ]
   end
 
@@ -100,10 +106,10 @@ defmodule Ponteio.MixProject do
   # See the documentation for `Mix` for more info on aliases.
   defp aliases do
     [
-      setup: ["deps.get", "ecto.setup", "assets.setup", "assets.build"],
+      setup: ["deps.get", "ash.setup", "assets.setup", "assets.build", "run priv/repo/seeds.exs"],
       "ecto.setup": ["ecto.create", "ecto.migrate", "run priv/repo/seeds.exs"],
       "ecto.reset": ["ecto.drop", "ecto.setup"],
-      test: ["ecto.create --quiet", "ecto.migrate --quiet", "test"],
+      test: ["ash.setup --quiet", "test"],
       "assets.setup": ["tailwind.install --if-missing", "esbuild.install --if-missing"],
       "assets.build": ["compile", "tailwind ponteio", "esbuild ponteio"],
       "assets.deploy": [
