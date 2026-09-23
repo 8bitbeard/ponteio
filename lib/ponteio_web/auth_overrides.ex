@@ -24,4 +24,16 @@ defmodule PonteioWeb.AuthOverrides do
   # override AshAuthentication.Phoenix.Components.SignIn do
   #  set :show_banner, false
   # end
+
+  @doc """
+  Translates the generated sign-in page's copy for the Google button
+  (issue #5, acceptance criterion "Botão \"Entrar com Google\""), passed
+  as `gettext_fn` to `sign_in_route` in the router. Leaves every other
+  string as-is (English default) — no other auth page copy is in scope
+  of this issue.
+  """
+  @spec translate(String.t(), keyword) :: String.t()
+  def translate(msgid, bindings \\ [])
+  def translate("Sign in with Google", _bindings), do: "Entrar com Google"
+  def translate(msgid, _bindings), do: msgid
 end

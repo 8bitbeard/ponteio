@@ -34,6 +34,33 @@ docker compose run --rm app mix <tarefa>
 
 Exemplos: `docker compose run --rm app mix ecto.migrate`, `docker compose run --rm app iex -S mix`.
 
+## Login social com Google
+
+Além de e-mail/senha, a tela `/sign-in` também oferece um botão "Entrar com Google" (issue #5, PRD §6.1, SDD §2.1 — estratégia `google` do `AshAuthentication`). Para habilitá-lo localmente:
+
+1. No [Google Cloud Console](https://console.cloud.google.com/welcome), abra **APIs & Services → Credentials**.
+2. Clique em **+ CREATE CREDENTIALS** e escolha **OAuth client ID**.
+3. Em **Application type**, selecione **Web application**.
+4. Em **Authorized redirect URIs**, adicione a URL de callback — a rota exata é gerada por `AshAuthentication.Phoenix` a partir do `auth_routes` no router e, para o ambiente `docker compose` local (`PHX_HOST=localhost`, `PORT=4000`), é:
+
+   ```
+   http://localhost:4000/auth/user/google/callback
+   ```
+
+   Para outro ambiente (produção, por exemplo), troque o host/porta pelo domínio real; o caminho (`/auth/user/google/callback`) não muda.
+5. Copie o **Client ID** e o **Client secret** gerados e coloque-os em `.env` (nunca commitados — veja `.env.example`):
+
+   ```
+   GOOGLE_CLIENT_ID=...
+   GOOGLE_CLIENT_SECRET=...
+   ```
+
+6. Reinicie `docker compose up` (ou `docker compose run --rm app ...`) para que as novas variáveis sejam lidas.
+
+Sem essas duas variáveis definidas, o botão continua visível na tela de login, mas a troca do código OAuth por um token falha ao tentar autenticar (a aplicação não sobe com credenciais ausentes — apenas o fluxo de login Google não funciona). Em produção, defina também `GOOGLE_REDIRECT_URI` com a URL completa (`https://SEU-DOMINIO/auth`) caso o `PHX_HOST`/`PORT` calculados automaticamente (ver `config/runtime.exs`) não correspondam ao domínio público.
+
+A suíte de testes automatizados nunca depende de credenciais reais do Google: o fluxo OAuth2 é exercitado ponta a ponta interceptando a troca de token e a busca de dados do usuário via um `Assent.HTTPAdapter` de teste (`test/support/google_oauth_stub.ex`), configurado apenas em `config/test.exs`.
+
 ## Rodando as verificações de qualidade localmente
 
 Os comandos abaixo são os mesmos executados pela pipeline de CI (`.github/workflows/ci.yml`) em todo PR. Rode-os via `docker compose run --rm app <comando>` (sem Elixir instalado na máquina) ou diretamente com `mix` caso já tenha Elixir/Erlang no ambiente local (veja `mix.exs` para as versões usadas em CI: Elixir 1.18.3 / OTP 27).

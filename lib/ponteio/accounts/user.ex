@@ -1,13 +1,23 @@
 defmodule Ponteio.Accounts.User do
   @moduledoc """
   A registered account, authenticated by e-mail + senha via the
-  `AshAuthentication` `:password` strategy (per SDD §2.1).
+  `AshAuthentication` `:password` strategy, or via Google login (the
+  `:google` strategy) — per SDD §2.1.
 
   New accounts are created through `:register_with_password` (e-mail
   uniqueness enforced by the `:unique_email` identity, minimum password
   length enforced on the `:password` argument) and must confirm their
   e-mail (the `confirm_new_user` add-on) before a subsequent sign-in is
-  allowed. Social login (`strategies :google`) is added in a future issue.
+  allowed.
+
+  Google login goes through `:register_with_google` instead (issue #5):
+  it upserts on the same `:unique_email` identity, so a Google sign-in
+  whose verified e-mail matches an existing password-based account links
+  to it rather than creating a duplicate user, and a brand-new Google
+  sign-in creates (and auto-confirms) a new account. Returning users are
+  matched by the provider's `iss`/`sub` claims, persisted on
+  `Ponteio.Accounts.UserIdentity` — not by e-mail alone, which OAuth2
+  providers don't guarantee to be stable.
   """
 
   use Ash.Resource,
@@ -56,6 +66,13 @@ defmodule Ponteio.Accounts.User do
       end
 
       remember_me :remember_me
+
+      google do
+        client_id Ponteio.Secrets
+        client_secret Ponteio.Secrets
+        redirect_uri Ponteio.Secrets
+        identity_resource Ponteio.Accounts.UserIdentity
+      end
     end
   end
 
@@ -186,6 +203,37 @@ defmodule Ponteio.Accounts.User do
       end
     end
 
+    create :register_with_google do
+      description "Register or sign in a user via Google OAuth2 (issue #5)."
+
+      argument :user_info, :map, allow_nil?: false
+      argument :oauth_tokens, :map, allow_nil?: false, sensitive?: true
+
+      # Matches an existing account by e-mail (Google reliably verifies
+      # ownership, so `trust_email_verified?` — default true on the
+      # `google` strategy — allows linking); creates a new one otherwise.
+      upsert? true
+      upsert_identity :unique_email
+
+      # Generates the session token for the (newly created or matched) user
+      change AshAuthentication.GenerateTokenChange
+
+      # Persists the provider's `iss`/`sub` claims on `UserIdentity`, so
+      # future sign-ins from this same Google account are matched safely
+      change AshAuthentication.Strategy.OAuth2.IdentityChange
+
+      change fn changeset, _ ->
+        user_info = Ash.Changeset.get_argument(changeset, :user_info)
+
+        Ash.Changeset.change_attributes(changeset, Map.take(user_info, ["email"]))
+      end
+
+      # A Google-only account already has a verified e-mail; skip re-running
+      # the password/confirmation attributes on an upsert match
+      upsert_fields []
+      change set_attribute(:confirmed_at, &DateTime.utc_now/0)
+    end
+
     action :request_password_reset_token do
       description "Send password reset instructions to a user if they exist."
 
@@ -256,7 +304,9 @@ defmodule Ponteio.Accounts.User do
     end
 
     attribute :hashed_password, :string do
-      allow_nil? false
+      # nil for accounts created purely via Google login (issue #5) — they
+      # never set a password
+      allow_nil? true
       sensitive? true
     end
 
