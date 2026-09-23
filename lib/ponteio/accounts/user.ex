@@ -239,6 +239,12 @@ defmodule Ponteio.Accounts.User do
     bypass AshAuthentication.Checks.AshAuthenticationInteraction do
       authorize_if always()
     end
+
+    # An authenticated user may change their own password (issue #4,
+    # PRD §6.1) — never someone else's.
+    policy action(:change_password) do
+      authorize_if expr(id == ^actor(:id))
+    end
   end
 
   attributes do

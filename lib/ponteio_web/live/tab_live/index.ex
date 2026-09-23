@@ -21,6 +21,7 @@ defmodule PonteioWeb.TabLive.Index do
       <p class="text-base-content/70">
         Bem-vindo(a), {@current_user.email}. A listagem de tablaturas será implementada em breve.
       </p>
+      <.link navigate={~p"/account/password"} class="link">Trocar senha</.link>
     </Layouts.app>
     """
   end

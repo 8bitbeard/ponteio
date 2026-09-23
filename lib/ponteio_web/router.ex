@@ -40,6 +40,10 @@ defmodule PonteioWeb.Router do
       # (`on_mount {PonteioWeb.LiveUserAuth, :live_user_required}` inside each
       # LiveView) — see issue #3.
       live "/tabs", TabLive.Index, :index
+
+      # Authenticated password change (issue #4, third acceptance criterion) —
+      # same `on_mount` guard as above, declared inside the LiveView itself.
+      live "/account/password", UserLive.ChangePassword, :edit
     end
   end
 
