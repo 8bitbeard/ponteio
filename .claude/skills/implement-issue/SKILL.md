@@ -53,8 +53,14 @@ Se o comando for chamado **sem nenhum argumento**, resolva a issue automaticamen
 
    Passos:
    1. Rode `gh issue view <numero> --comments` e trate o corpo/comentários
-      como a especificação completa da tarefa. Se algo estiver ambíguo,
-      pare e reporte a ambiguidade em vez de assumir.
+      como a especificação completa da tarefa. Se a issue citar `PRD §X` /
+      `SDD §Y`, leia `docs/PRD-plataforma-tablaturas.md` e
+      `docs/SDD-plataforma-tablaturas.md` no repositório — essas referências
+      não são decorativas, são a especificação normativa. Para telas de
+      `tabs` (Minhas tablaturas, Editor, Estudo), leia também
+      `docs/mockup-telas.html` (mockup estático de referência visual). Se
+      algo continuar ambíguo mesmo após ler esses documentos, pare e reporte
+      a ambiguidade em vez de assumir.
    2. Garanta que está com `develop` atualizada
       (`git fetch origin && git checkout develop && git pull`).
    3. Crie a branch `feature/<nome-da-demanda>` a partir de `develop`
