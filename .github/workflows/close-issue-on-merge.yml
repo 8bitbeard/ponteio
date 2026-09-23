@@ -1,0 +1,77 @@
+name: Close Issue and Update Board on Merge
+
+# Quando um PR de feature é mergeado em `develop`, o fechamento automático de
+# issues via "Closes #N" não dispara (GitHub só faz isso em merges na branch
+# default, que é `main`). Este workflow cobre essa lacuna: fecha manualmente
+# as issues referenciadas no corpo do PR e move o card correspondente no
+# project board "Ponteio APP" para "Done".
+
+on:
+  pull_request:
+    types: [closed]
+    branches:
+      - develop
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: "Número de um PR já mergeado para reprocessar (fecha issues e atualiza o board)"
+        required: true
+
+env:
+  OWNER: 8bitbeard
+  REPO: ponteio
+  PROJECT_NUMBER: 1
+
+jobs:
+  close-issues-and-update-board:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolver número do PR e ler o corpo
+        id: pr
+        env:
+          GH_TOKEN: ${{ secrets.PROJECT_TOKEN }}
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            PR_NUMBER="${{ github.event.inputs.pr_number }}"
+          else
+            PR_NUMBER="${{ github.event.pull_request.number }}"
+          fi
+          echo "pr_number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
+          gh pr view "$PR_NUMBER" --repo "$OWNER/$REPO" --json body --jq '.body' > pr_body.txt
+
+      - name: Extrair issues referenciadas (Closes/Fixes/Resolves #N)
+        id: issues
+        run: |
+          ISSUES=$(grep -oiP '(close[sd]?|fix(e[sd])?|resolve[sd]?)\s*:?\s*#\K[0-9]+' pr_body.txt | sort -u | tr '\n' ' ')
+          echo "Issues encontradas: $ISSUES"
+          echo "issues=$ISSUES" >> "$GITHUB_OUTPUT"
+
+      - name: Fechar issues e mover cards para Done
+        if: steps.issues.outputs.issues != ''
+        env:
+          GH_TOKEN: ${{ secrets.PROJECT_TOKEN }}
+          PR_NUMBER: ${{ steps.pr.outputs.pr_number }}
+          ISSUES: ${{ steps.issues.outputs.issues }}
+        run: |
+          PROJECT_ID=$(gh project list --owner "$OWNER" --format json | jq -r '.projects[] | select(.title=="Ponteio APP") | .id')
+          FIELD_ID=$(gh project field-list "$PROJECT_NUMBER" --owner "$OWNER" --format json | jq -r '.fields[] | select(.name=="Status") | .id')
+          OPTION_ID=$(gh project field-list "$PROJECT_NUMBER" --owner "$OWNER" --format json | jq -r '.fields[] | select(.name=="Status") | .options[] | select(.name=="Done") | .id')
+
+          for ISSUE in $ISSUES; do
+            STATE=$(gh issue view "$ISSUE" --repo "$OWNER/$REPO" --json state --jq '.state')
+            if [ "$STATE" = "OPEN" ]; then
+              gh issue close "$ISSUE" --repo "$OWNER/$REPO" \
+                --comment "Fechada automaticamente: PR #$PR_NUMBER mergeado em \`develop\`."
+            else
+              echo "Issue #$ISSUE já estava fechada."
+            fi
+
+            ITEM_ID=$(gh project item-list "$PROJECT_NUMBER" --owner "$OWNER" --format json --limit 200 | jq -r --argjson n "$ISSUE" '.items[] | select(.content.number == $n) | .id')
+            if [ -n "$ITEM_ID" ] && [ "$ITEM_ID" != "null" ]; then
+              gh project item-edit --project-id "$PROJECT_ID" --id "$ITEM_ID" --field-id "$FIELD_ID" --single-select-option-id "$OPTION_ID"
+              echo "Issue #$ISSUE: card movido para Done."
+            else
+              echo "::warning::Issue #$ISSUE não encontrada no board — card não pôde ser movido."
+            fi
+          done
