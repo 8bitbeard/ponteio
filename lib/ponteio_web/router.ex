@@ -35,6 +35,11 @@ defmodule PonteioWeb.Router do
       #
       # If an authenticated user must *not* be present:
       # on_mount {PonteioWeb.LiveUserAuth, :live_no_user}
+
+      # `tabs` routes (SDD §7) require an authenticated session
+      # (`on_mount {PonteioWeb.LiveUserAuth, :live_user_required}` inside each
+      # LiveView) — see issue #3.
+      live "/tabs", TabLive.Index, :index
     end
   end
 
