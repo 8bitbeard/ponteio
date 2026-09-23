@@ -11,6 +11,7 @@ Regras obrigatórias:
 - **Toda edição de escopo, status ou detalhes de uma atividade deve ser feita na issue correspondente**, não apenas em conversas ou arquivos locais.
 - **Arquivos markdown locais (em `docs/`, por exemplo) podem ser usados como rascunho de planos** (PRDs, SDDs, RFCs, notas de design, etc.) durante a fase de definição.
 - **Assim que um plano estiver definido**, as atividades derivadas dele devem ser criadas como issues no repositório e adicionadas ao board — os arquivos locais não substituem o rastreamento oficial.
+- **Uma vez que `docs/` seja commitado no repositório, ele deixa de ser rascunho e passa a ser referência normativa**: as issues citam `PRD §X` / `SDD §Y` assumindo que esses arquivos existem no repo. Antes de implementar qualquer story que cite essas referências, leia `docs/PRD-plataforma-tablaturas.md` e `docs/SDD-plataforma-tablaturas.md` — e, para telas de `tabs` (Minhas tablaturas, Editor, Estudo), `docs/mockup-telas.html` (mockup estático de referência visual, citado no SDD §7). Isso vale especialmente para subagentes disparados por `/implement-issue`, que começam com contexto zerado e não devem assumir o conteúdo desses documentos sem lê-los.
 
 ## Fluxo de trabalho esperado
 

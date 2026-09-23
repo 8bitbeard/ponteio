@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Traste — Mockup de Telas</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap">
+<style>
+  :root {
+    --paper: #EEE7D6;
+    --paper-raised: #F7F2E6;
+    --ink: #2A2118;
+    --ink-soft: #6B5D4D;
+    --wood: #4A2E23;
+    --wood-deep: #33201A;
+    --brass: #B08D57;
+    --brass-soft: #E4D2AC;
+    --felt: #33463A;
+    --felt-soft: #C9DACB;
+    --line: #D8CBAE;
+    --rust: #9C4A34;
+    --shadow: rgba(42, 33, 24, 0.14);
+    --radius: 6px;
+    --font-display: 'Fraunces', Georgia, 'Times New Roman', serif;
+    --font-ui: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  }
+
+  :root:not([data-theme="light"]) {
+    @media (prefers-color-scheme: dark) {
+      --paper: #211A14;
+      --paper-raised: #2B231B;
+      --ink: #EDE3D2;
+      --ink-soft: #B7A98F;
+      --wood: #D9B98A;
+      --wood-deep: #F1DFC0;
+      --brass: #D9B871;
+      --brass-soft: #4A3D26;
+      --felt: #9FC1A6;
+      --felt-soft: #263029;
+      --line: #43392C;
+      --rust: #D97F63;
+      --shadow: rgba(0, 0, 0, 0.4);
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper: #211A14;
+    --paper-raised: #2B231B;
+    --ink: #EDE3D2;
+    --ink-soft: #B7A98F;
+    --wood: #D9B98A;
+    --wood-deep: #F1DFC0;
+    --brass: #D9B871;
+    --brass-soft: #4A3D26;
+    --felt: #9FC1A6;
+    --felt-soft: #263029;
+    --line: #43392C;
+    --rust: #D97F63;
+    --shadow: rgba(0, 0, 0, 0.4);
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--font-ui);
+    min-height: 100vh;
+  }
+
+  .topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 28px;
+    background: var(--wood-deep);
+    color: var(--paper-raised);
+  }
+  .brand {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+  }
+  .brand-mark {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 22px;
+    letter-spacing: 0.01em;
+  }
+  .brand-tag {
+    font-size: 12px;
+    color: var(--brass);
+    font-weight: 500;
+  }
+  .screen-switch {
+    display: flex;
+    gap: 4px;
+    background: rgba(0,0,0,0.18);
+    padding: 4px;
+    border-radius: 999px;
+  }
+  .screen-switch button {
+    font-family: var(--font-ui);
+    font-size: 13px;
+    font-weight: 600;
+    padding: 7px 16px;
+    border-radius: 999px;
+    border: none;
+    background: transparent;
+    color: var(--brass-soft);
+    cursor: pointer;
+  }
+  .screen-switch button.active {
+    background: var(--brass);
+    color: var(--wood-deep);
+  }
+  .user-chip {
+    width: 30px; height: 30px; border-radius: 50%;
+    background: var(--felt);
+    color: var(--paper-raised);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px; font-weight: 600;
+  }
+
+  main { max-width: 1040px; margin: 0 auto; padding: 36px 28px 80px; }
+  .screen { display: none; }
+  .screen.active { display: block; }
+
+  h1 {
+    font-family: var(--font-display);
+    font-size: 30px;
+    font-weight: 600;
+    margin: 0;
+  }
+  .screen-head {
+    display: flex; align-items: flex-end; justify-content: space-between;
+    margin-bottom: 26px;
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 18px;
+  }
+  .btn {
+    font-family: var(--font-ui);
+    font-weight: 600; font-size: 14px;
+    padding: 10px 18px;
+    border-radius: var(--radius);
+    border: 1px solid transparent;
+    cursor: pointer;
+  }
+  .btn-primary { background: var(--rust); color: #FBF3E8; }
+  .btn-ghost { background: transparent; border-color: var(--line); color: var(--ink); }
+  .btn-small { font-size: 12px; padding: 6px 12px; }
+
+  /* --- Tela 1: Minhas tablaturas --- */
+  .tab-row {
+    display: grid;
+    grid-template-columns: 1.4fr 1fr 90px 130px 160px;
+    align-items: center;
+    gap: 12px;
+    padding: 16px 14px;
+    background: var(--paper-raised);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    margin-bottom: 10px;
+    box-shadow: 0 1px 0 var(--shadow);
+  }
+  .tab-row .title { font-family: var(--font-display); font-weight: 600; font-size: 17px; }
+  .tab-row .artist { color: var(--ink-soft); font-size: 14px; }
+  .tab-row .capo { font-size: 13px; color: var(--ink-soft); }
+  .status {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 12px; font-weight: 600;
+    padding: 5px 10px; border-radius: 999px;
+    width: fit-content;
+  }
+  .status::before { content: ''; width: 6px; height: 6px; border-radius: 50%; }
+  .status.ready { background: var(--felt-soft); color: var(--felt); }
+  .status.ready::before { background: var(--felt); }
+  .status.analyzing { background: var(--brass-soft); color: var(--brass); }
+  .status.analyzing::before { background: var(--brass); }
+  .status.draft { background: var(--line); color: var(--ink-soft); }
+  .status.draft::before { background: var(--ink-soft); }
+  .row-actions { display: flex; gap: 14px; font-size: 13px; font-weight: 600; }
+  .row-actions a { color: var(--wood); text-decoration: none; cursor: pointer; }
+  .row-actions a.danger { color: var(--rust); }
+
+  /* --- Tela 2: Editor --- */
+  .meta-form {
+    display: grid;
+    grid-template-columns: 2fr 2fr 1fr;
+    gap: 16px;
+    background: var(--paper-raised);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 18px;
+    margin-bottom: 30px;
+  }
+  .field label {
+    display: block; font-size: 12px; font-weight: 600;
+    color: var(--ink-soft); margin-bottom: 6px;
+  }
+  .field input {
+    width: 100%; font-family: var(--font-ui); font-size: 14px;
+    padding: 9px 10px; border-radius: 4px; border: 1px solid var(--line);
+    background: var(--paper); color: var(--ink);
+  }
+
+  .measure-card {
+    background: var(--paper-raised);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 16px 18px 18px;
+    margin-bottom: 16px;
+  }
+  .measure-head {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 14px;
+  }
+  .measure-head .label { font-weight: 700; font-size: 13px; color: var(--ink-soft); }
+
+  .string-grid { display: flex; flex-direction: column; gap: 3px; }
+  .string-row {
+    display: grid;
+    grid-template-columns: 22px repeat(8, 42px);
+    align-items: center;
+    height: 26px;
+  }
+  .string-name { font-size: 11px; color: var(--ink-soft); font-weight: 600; }
+  .tab-cell {
+    position: relative;
+    border-bottom: 1px solid var(--line);
+    height: 100%;
+  }
+  .tab-cell.editable { cursor: pointer; }
+  .tab-cell.editable:hover { border-bottom-color: var(--wood); }
+  .note-chip {
+    position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+    background: var(--wood); color: var(--paper-raised);
+    font-size: 11px; font-weight: 700;
+    width: 19px; height: 19px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    z-index: 2;
+  }
+  .bar-line {
+    grid-column: span 1;
+    border-right: 2px solid var(--wood);
+    height: 100%;
+  }
+
+  /* --- Tela 3: Estudo --- */
+  .study-head {
+    display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;
+  }
+  .study-head .meta { color: var(--ink-soft); font-size: 14px; margin-top: 4px; }
+  .capo-badge {
+    font-size: 12px; font-weight: 600; color: var(--brass);
+    border: 1px solid var(--brass); padding: 4px 10px; border-radius: 999px;
+  }
+
+  .segment-row {
+    display: grid;
+    grid-template-columns: 22px repeat(8, 42px);
+    height: 92px;
+    align-items: end;
+    margin-bottom: 2px;
+  }
+  .segment-bracket {
+    grid-row: 1;
+    border-bottom: 2px solid var(--wood);
+    position: relative;
+    padding-bottom: 6px;
+    display: flex; align-items: flex-end; gap: 8px;
+  }
+  .segment-bracket.muted { border-bottom-style: dashed; border-bottom-color: var(--ink-soft); }
+  .chord-chip {
+    display: flex; align-items: center; gap: 8px;
+    background: var(--paper-raised); border: 1px solid var(--line);
+    border-radius: 5px; padding: 4px 8px 4px 4px;
+    font-size: 12px;
+  }
+  .chord-chip .name { font-family: var(--font-display); font-weight: 700; font-size: 14px; }
+  .chord-chip .pick { color: var(--ink-soft); font-size: 11px; }
+  .no-match-chip {
+    font-size: 11px; color: var(--ink-soft); font-style: italic;
+    padding: 4px 8px;
+  }
+  .diagram { width: 26px; height: 32px; }
+
+  .legend { display: flex; gap: 22px; margin: 28px 0 10px; font-size: 12px; color: var(--ink-soft); }
+  .legend span { display: flex; align-items: center; gap: 6px; }
+  .legend .swatch { width: 12px; height: 3px; background: var(--wood); }
+  .legend .swatch.dash { background: none; border-top: 2px dashed var(--ink-soft); }
+</style>
+</head>
+<body>
+
+  <div class="topbar">
+    <div class="brand">
+      <span class="brand-mark">Traste</span>
+      <span class="brand-tag">tablatura com posição de mão</span>
+    </div>
+    <div class="screen-switch">
+      <button data-screen="index" class="active">Minhas tablaturas</button>
+      <button data-screen="editor">Editor</button>
+      <button data-screen="study">Estudo</button>
+    </div>
+    <div class="user-chip">W</div>
+  </div>
+
+  <main>
+
+    <!-- TELA 1 — INDEX / CRUD -->
+    <section class="screen active" id="screen-index">
+      <div class="screen-head">
+        <div>
+          <h1>Minhas tablaturas</h1>
+        </div>
+        <button class="btn btn-primary">+ Nova tablatura</button>
+      </div>
+
+      <div class="tab-row">
+        <div><div class="title">Águas de Março</div></div>
+        <div class="artist">Tom Jobim</div>
+        <div class="capo">Capo 2ª</div>
+        <div class="status ready">Pronta</div>
+        <div class="row-actions"><a>Estudar</a><a>Editar</a><a class="danger">Excluir</a></div>
+      </div>
+      <div class="tab-row">
+        <div><div class="title">Oceano</div></div>
+        <div class="artist">Djavan</div>
+        <div class="capo">Sem capo</div>
+        <div class="status analyzing">Analisando</div>
+        <div class="row-actions"><a>Editar</a><a class="danger">Excluir</a></div>
+      </div>
+      <div class="tab-row">
+        <div><div class="title">Sem título</div></div>
+        <div class="artist">—</div>
+        <div class="capo">—</div>
+        <div class="status draft">Rascunho</div>
+        <div class="row-actions"><a>Editar</a><a class="danger">Excluir</a></div>
+      </div>
+    </section>
+
+    <!-- TELA 2 — EDITOR -->
+    <section class="screen" id="screen-editor">
+      <div class="screen-head">
+        <h1>Editar tablatura</h1>
+        <div style="display:flex; gap:10px;">
+          <button class="btn btn-ghost">Cancelar</button>
+          <button class="btn btn-primary">Salvar tudo</button>
+        </div>
+      </div>
+
+      <div class="meta-form">
+        <div class="field"><label>Título</label><input value="Águas de Março"></div>
+        <div class="field"><label>Artista</label><input value="Tom Jobim"></div>
+        <div class="field"><label>Capotraste</label><input value="2"></div>
+      </div>
+
+      <div class="measure-card">
+        <div class="measure-head">
+          <span class="label">Compasso 1</span>
+          <button class="btn btn-ghost btn-small">Salvar compasso</button>
+        </div>
+        <div class="string-grid">
+          <div class="string-row">
+            <span class="string-name">e</span>
+            <div class="tab-cell editable"></div><div class="tab-cell editable"><span class="note-chip">3</span></div><div class="tab-cell editable"></div><div class="tab-cell editable"></div><div class="tab-cell editable"></div><div class="tab-cell editable"></div><div class="tab-cell editable"></div><div class="tab-cell editable bar-line"></div>
+          </div>
+          <div class="string-row">
+            <span class="string-name">B</span>
+            <div class="tab-cell editable"></div><div class="tab-cell editable"></div><div class="tab-cell editable"><span class="note-chip">0</span></div><div class="tab-cell editable"></div><div class="tab-cell editable"></div><div class="tab-cell editable"></div><div class="tab-cell editable"></div><div class="tab-cell editable bar-line"></div>
+          </div>
+          <div class="string-row">
+            <span class="string-name">G</span>
+            <div class="tab-cell editable"></div><div class="tab-cell editable"></div><div class="tab-cell editable"></div><div class="tab-cell editable"><span class="note-chip">0</span></div><div class="tab-cell editable"></div><div class="tab-cell editable"></div><div class="tab-cell editable"></div><div class="tab-cell editable bar-line"></div>
+          </div>
+          <div class="string-row">
+            <span class="string-name">D</span>
+            <div class="tab-cell editable"></div><div class="tab-cell editable"></div><div class="tab-cell editable"></div><div class="tab-cell editable"></div><div class="tab-cell editable"><span class="note-chip">2</span></div><div class="tab-cell editable"></div><div class="tab-cell editable"></div><div class="tab-cell editable bar-line"></div>
+          </div>
+          <div class="string-row">
+            <span class="string-name">A</span>
+            <div class="tab-cell editable"></div><div class="tab-cell editable"></div><div class="tab-cell editable"></div><div class="tab-cell editable"></div><div class="tab-cell editable"></div><div class="tab-cell editable"></div><div class="tab-cell editable"></div><div class="tab-cell editable bar-line"></div>
+          </div>
+          <div class="string-row">
+            <span class="string-name">E</span>
+            <div class="tab-cell editable"><span class="note-chip">0</span></div><div class="tab-cell editable"></div><div class="tab-cell editable"></div><div class="tab-cell editable"></div><div class="tab-cell editable"></div><div class="tab-cell editable"></div><div class="tab-cell editable"></div><div class="tab-cell editable bar-line"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="measure-card">
+        <div class="measure-head">
+          <span class="label">Compasso 2</span>
+          <button class="btn btn-ghost btn-small">Salvar compasso</button>
+        </div>
+        <div class="string-grid">
+          <div class="string-row">
+            <span class="string-name">e</span>
+            <div class="tab-cell editable"></div><div class="tab-cell editable"></div><div class="tab-cell editable"></div><div class="tab-cell editable"></div><div class="tab-cell editable"></div><div class="tab-cell editable"></div><div class="tab-cell editable"></div><div class="tab-cell editable bar-line"></div>
+          </div>
+          <div class="string-row">
+            <span class="string-name">B</span>
+            <div class="tab-cell editable"></div><div class="tab-cell editable"></div><div class="tab-cell editable"></div><div class="tab-cell editable"></div><div class="tab-cell editable"></div><div class="tab-cell editable"></div><div class="tab-cell editable"></div><div class="tab-cell editable bar-line"></div>
+          </div>
+          <div class="string-row">
+            <span class="string-name">G</span>
+            <div class="tab-cell editable"></div><div class="tab-cell editable"></div><div class="tab-cell editable"></div><div class="tab-cell editable"></div><div class="tab-cell editable"></div><div class="tab-cell editable"></div><div class="tab-cell editable"></div><div class="tab-cell editable bar-line"></div>
+          </div>
+          <div class="string-row">
+            <span class="string-name">D</span>
+            <div class="tab-cell editable"></div><div class="tab-cell editable"></div><div class="tab-cell editable"></div><div class="tab-cell editable"></div><div class="tab-cell editable"></div><div class="tab-cell editable"></div><div class="tab-cell editable"></div><div class="tab-cell editable bar-line"></div>
+          </div>
+          <div class="string-row">
+            <span class="string-name">A</span>
+            <div class="tab-cell editable"></div><div class="tab-cell editable"></div><div class="tab-cell editable"></div><div class="tab-cell editable"></div><div class="tab-cell editable"></div><div class="tab-cell editable"></div><div class="tab-cell editable"></div><div class="tab-cell editable bar-line"></div>
+          </div>
+          <div class="string-row">
+            <span class="string-name">E</span>
+            <div class="tab-cell editable"></div><div class="tab-cell editable"></div><div class="tab-cell editable"></div><div class="tab-cell editable"></div><div class="tab-cell editable"></div><div class="tab-cell editable"></div><div class="tab-cell editable"></div><div class="tab-cell editable bar-line"></div>
+          </div>
+        </div>
+      </div>
+
+      <button class="btn btn-ghost">+ Adicionar compasso</button>
+    </section>
+
+    <!-- TELA 3 — ESTUDO -->
+    <section class="screen" id="screen-study">
+      <div class="study-head">
+        <div>
+          <h1>Águas de Março</h1>
+          <div class="meta">Tom Jobim</div>
+        </div>
+        <span class="capo-badge">Capo na 2ª casa</span>
+      </div>
+
+      <div class="legend">
+        <span><span class="swatch"></span> região coberta por um acorde sugerido</span>
+        <span><span class="swatch dash"></span> trecho sem sugestão</span>
+      </div>
+
+      <div class="measure-card">
+        <div class="measure-head"><span class="label">Compasso 1</span></div>
+
+        <div class="segment-row">
+          <div></div>
+          <div class="segment-bracket" style="grid-column: 2 / span 4;">
+            <div class="chord-chip">
+              <svg class="diagram" viewBox="0 0 26 32">
+                <rect x="2" y="2" width="22" height="26" fill="none" stroke="var(--ink-soft)" stroke-width="1"/>
+                <line x1="6.4" y1="2" x2="6.4" y2="28" stroke="var(--ink-soft)" stroke-width="0.7"/>
+                <line x1="10.8" y1="2" x2="10.8" y2="28" stroke="var(--ink-soft)" stroke-width="0.7"/>
+                <line x1="15.2" y1="2" x2="15.2" y2="28" stroke="var(--ink-soft)" stroke-width="0.7"/>
+                <line x1="19.6" y1="2" x2="19.6" y2="28" stroke="var(--ink-soft)" stroke-width="0.7"/>
+                <circle cx="2" cy="15" r="2" fill="var(--wood)"/>
+                <circle cx="24" cy="15" r="2" fill="var(--wood)"/>
+              </svg>
+              <div>
+                <div class="name">Sol</div>
+                <div class="pick">1 de 3 sugestões ▾</div>
+              </div>
+            </div>
+          </div>
+          <div class="segment-bracket muted" style="grid-column: 6 / span 3;">
+            <span class="no-match-chip">sem sugestão</span>
+          </div>
+        </div>
+
+        <div class="string-grid">
+          <div class="string-row"><span class="string-name">e</span>
+            <div class="tab-cell"></div><div class="tab-cell"><span class="note-chip">3</span></div><div class="tab-cell"></div><div class="tab-cell"></div><div class="tab-cell"></div><div class="tab-cell"><span class="note-chip">3</span></div><div class="tab-cell"></div><div class="tab-cell bar-line"></div>
+          </div>
+          <div class="string-row"><span class="string-name">B</span>
+            <div class="tab-cell"></div><div class="tab-cell"></div><div class="tab-cell"><span class="note-chip">0</span></div><div class="tab-cell"></div><div class="tab-cell"></div><div class="tab-cell"></div><div class="tab-cell"><span class="note-chip">1</span></div><div class="tab-cell bar-line"></div>
+          </div>
+          <div class="string-row"><span class="string-name">G</span>
+            <div class="tab-cell"></div><div class="tab-cell"></div><div class="tab-cell"></div><div class="tab-cell"><span class="note-chip">0</span></div><div class="tab-cell"></div><div class="tab-cell"></div><div class="tab-cell"></div><div class="tab-cell bar-line"></div>
+          </div>
+          <div class="string-row"><span class="string-name">D</span>
+            <div class="tab-cell"></div><div class="tab-cell"></div><div class="tab-cell"></div><div class="tab-cell"></div><div class="tab-cell"><span class="note-chip">2</span></div><div class="tab-cell"></div><div class="tab-cell"></div><div class="tab-cell bar-line"></div>
+          </div>
+          <div class="string-row"><span class="string-name">A</span>
+            <div class="tab-cell"></div><div class="tab-cell"></div><div class="tab-cell"></div><div class="tab-cell"></div><div class="tab-cell"></div><div class="tab-cell"></div><div class="tab-cell"></div><div class="tab-cell bar-line"></div>
+          </div>
+          <div class="string-row"><span class="string-name">E</span>
+            <div class="tab-cell"><span class="note-chip">0</span></div><div class="tab-cell"></div><div class="tab-cell"></div><div class="tab-cell"></div><div class="tab-cell"></div><div class="tab-cell"></div><div class="tab-cell"></div><div class="tab-cell bar-line"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="measure-card">
+        <div class="measure-head"><span class="label">Compasso 2</span></div>
+
+        <div class="segment-row">
+          <div></div>
+          <div class="segment-bracket" style="grid-column: 2 / span 8;">
+            <div class="chord-chip">
+              <svg class="diagram" viewBox="0 0 26 32">
+                <rect x="2" y="2" width="22" height="26" fill="none" stroke="var(--ink-soft)" stroke-width="1"/>
+                <line x1="6.4" y1="2" x2="6.4" y2="28" stroke="var(--ink-soft)" stroke-width="0.7"/>
+                <line x1="10.8" y1="2" x2="10.8" y2="28" stroke="var(--ink-soft)" stroke-width="0.7"/>
+                <line x1="15.2" y1="2" x2="15.2" y2="28" stroke="var(--ink-soft)" stroke-width="0.7"/>
+                <line x1="19.6" y1="2" x2="19.6" y2="28" stroke="var(--ink-soft)" stroke-width="0.7"/>
+                <circle cx="15.2" cy="9" r="2" fill="var(--wood)"/>
+                <circle cx="19.6" cy="9" r="2" fill="var(--wood)"/>
+                <circle cx="10.8" cy="15" r="2" fill="var(--wood)"/>
+              </svg>
+              <div>
+                <div class="name">Ré7</div>
+                <div class="pick">1 de 2 sugestões ▾</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="string-grid">
+          <div class="string-row"><span class="string-name">e</span>
+            <div class="tab-cell"></div><div class="tab-cell"></div><div class="tab-cell"><span class="note-chip">2</span></div><div class="tab-cell"></div><div class="tab-cell"></div><div class="tab-cell"></div><div class="tab-cell"></div><div class="tab-cell bar-line"></div>
+          </div>
+          <div class="string-row"><span class="string-name">B</span>
+            <div class="tab-cell"></div><div class="tab-cell"><span class="note-chip">3</span></div><div class="tab-cell"></div><div class="tab-cell"></div><div class="tab-cell"></div><div class="tab-cell"></div><div class="tab-cell"></div><div class="tab-cell bar-line"></div>
+          </div>
+          <div class="string-row"><span class="string-name">G</span>
+            <div class="tab-cell"><span class="note-chip">2</span></div><div class="tab-cell"></div><div class="tab-cell"></div><div class="tab-cell"></div><div class="tab-cell"></div><div class="tab-cell"></div><div class="tab-cell"></div><div class="tab-cell bar-line"></div>
+          </div>
+          <div class="string-row"><span class="string-name">D</span>
+            <div class="tab-cell"></div><div class="tab-cell"></div><div class="tab-cell"></div><div class="tab-cell"></div><div class="tab-cell"></div><div class="tab-cell"></div><div class="tab-cell"></div><div class="tab-cell bar-line"></div>
+          </div>
+          <div class="string-row"><span class="string-name">A</span>
+            <div class="tab-cell"></div><div class="tab-cell"></div><div class="tab-cell"></div><div class="tab-cell"></div><div class="tab-cell"></div><div class="tab-cell"></div><div class="tab-cell"></div><div class="tab-cell bar-line"></div>
+          </div>
+          <div class="string-row"><span class="string-name">E</span>
+            <div class="tab-cell"></div><div class="tab-cell"></div><div class="tab-cell"></div><div class="tab-cell"></div><div class="tab-cell"></div><div class="tab-cell"></div><div class="tab-cell"></div><div class="tab-cell bar-line"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <script>
+    document.querySelectorAll('.screen-switch button').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.screen-switch button').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+        btn.classList.add('active');
+        document.getElementById('screen-' + btn.dataset.screen).classList.add('active');
+      });
+    });
+  </script>
+</body>
+</html>
