@@ -23,6 +23,36 @@ end
 config :ponteio, PonteioWeb.Endpoint,
   http: [port: String.to_integer(System.get_env("PORT", "4000"))]
 
+# --- Login social com Google (issue #5, PRD §6.1, SDD §2.1) ---
+#
+# Credenciais lidas de variáveis de ambiente e nunca commitadas — veja
+# `.env.example` e o README para como gerar `GOOGLE_CLIENT_ID` /
+# `GOOGLE_CLIENT_SECRET` no Google Cloud Console. Em teste usamos valores
+# fixos: a suíte nunca depende de credenciais reais, ela intercepta a
+# troca de token via `Ponteio.Support.GoogleOAuthStub` (configurado em
+# `config/test.exs` como o `:ash_authentication, :http_adapter`).
+if config_env() == :test do
+  config :ponteio,
+    google_client_id: "google-test-client-id",
+    google_client_secret: "google-test-client-secret"
+else
+  config :ponteio,
+    google_client_id: System.get_env("GOOGLE_CLIENT_ID"),
+    google_client_secret: System.get_env("GOOGLE_CLIENT_SECRET")
+end
+
+# The base URI AshAuthentication appends `/user/google/callback` to (see
+# `AshAuthentication.Strategy.OAuth2.Plug.build_redirect_uri/2`) — must
+# match the "Authorized redirect URI" registered in the Google Cloud
+# Console (README documents the exact value). Defaults to the same
+# host/port docker-compose exposes locally; override with
+# `GOOGLE_REDIRECT_URI` for any environment where that default is wrong
+# (production, most notably).
+config :ponteio,
+  google_redirect_uri:
+    System.get_env("GOOGLE_REDIRECT_URI") ||
+      "http://#{System.get_env("PHX_HOST", "localhost")}:#{System.get_env("PORT", "4000")}/auth"
+
 if config_env() == :dev do
   # Reload browser tabs when matching files change.
   config :ponteio, PonteioWeb.Endpoint,
