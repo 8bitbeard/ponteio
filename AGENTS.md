@@ -43,7 +43,7 @@ Regras:
 - Quando `develop` estiver estável e pronta para ir a produção, abra um PR de `develop` para `main`.
 - Commits e títulos de PR devem seguir [Conventional Commits](https://www.conventionalcommits.org/) (`feat:`, `fix:`, `chore:`, `docs:`, etc.) — isso é usado pela automação de release para decidir a versão e montar o changelog.
 - O merge de PRs é feito via **squash and merge**, usando o título do PR (em Conventional Commits) como mensagem final do commit.
-- **`Closes #N` no corpo do PR não fecha a issue automaticamente** quando o PR mira `develop` — o fechamento automático do GitHub só dispara em merges na branch default (`main`). Ao mergear um PR de `feature/*` para `develop`, feche a issue manualmente (`gh issue close <numero> --comment "..."`) e mova o card correspondente no project board para "Done".
+- **`Closes #N` no corpo do PR não fecha a issue automaticamente** quando o PR mira `develop` — o fechamento automático do GitHub só dispara em merges na branch default (`main`). O workflow `.github/workflows/close-issue-on-merge.yml` cobre essa lacuna: ao mergear um PR de `feature/*` em `develop`, ele lê o `Closes #N` (ou `Fixes`/`Resolves`) do corpo do PR, fecha a issue automaticamente e move o card correspondente no project board para "Done". Ele depende do secret `PROJECT_TOKEN` (PAT com escopos `repo` + `project`) — sem esse secret configurado, o passo falha silenciosamente ao tentar mover o card, e a issue/card precisam ser corrigidos manualmente (`gh issue close <numero> --comment "..."` + mover o card).
 
 ### Proteção de branches (branch protection)
 
