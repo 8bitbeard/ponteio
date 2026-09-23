@@ -3,9 +3,9 @@ defmodule Ponteio.Accounts do
   Domain for user accounts and authentication (per SDD §1, §2.1).
 
   Holds the `User` resource (backed by `AshAuthentication`, `strategies
-  :password`) and its supporting `Token` resource. Social login
-  (`strategies :google`) is added in a future issue, once that work is
-  scoped.
+  :password` and `strategies :google`), its supporting `Token` resource,
+  and the `UserIdentity` resource that links a `User` to the Google
+  account(s) they signed in with (issue #5).
   """
 
   use Ash.Domain,
@@ -14,5 +14,6 @@ defmodule Ponteio.Accounts do
   resources do
     resource Ponteio.Accounts.Token
     resource Ponteio.Accounts.User
+    resource Ponteio.Accounts.UserIdentity
   end
 end

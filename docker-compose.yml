@@ -33,6 +33,8 @@ services:
       PHX_HOST: ${PHX_HOST:-localhost}
       PORT: ${PORT:-4000}
       SECRET_KEY_BASE: ${SECRET_KEY_BASE:-insecure_dev_secret_key_base_change_me_insecure_dev_secret}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
     ports:
       - "${PORT:-4000}:4000"
     volumes:
