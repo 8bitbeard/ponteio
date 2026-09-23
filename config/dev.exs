@@ -55,7 +55,7 @@ config :ponteio, PonteioWeb.Endpoint,
 # different ports.
 
 # Enable dev routes for dashboard and mailbox
-config :ponteio, dev_routes: true
+config :ponteio, dev_routes: true, token_signing_secret: "uITClbbRRrXU1nNRdMgB++p1ljnl8+Vb"
 
 # Do not include metadata nor timestamps in development logs
 config :logger, :default_formatter, format: "[$level] $message\n"
