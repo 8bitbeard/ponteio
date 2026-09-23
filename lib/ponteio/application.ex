@@ -15,7 +15,8 @@ defmodule Ponteio.Application do
       # Start a worker by calling: Ponteio.Worker.start_link(arg)
       # {Ponteio.Worker, arg},
       # Start to serve requests, typically the last entry
-      PonteioWeb.Endpoint
+      PonteioWeb.Endpoint,
+      {AshAuthentication.Supervisor, [otp_app: :ponteio]}
     ]
 
     # See https://elixir.hexdocs.pm/Supervisor.html

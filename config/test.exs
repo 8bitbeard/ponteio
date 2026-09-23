@@ -1,4 +1,6 @@
 import Config
+config :ponteio, token_signing_secret: "rJ0A7NTJ5Mi76lnPqEwkjUH00oUD4m3I"
+config :bcrypt_elixir, log_rounds: 1
 config :ash, policies: [show_policy_breakdowns?: true], disable_async?: true
 
 # Configure your database
