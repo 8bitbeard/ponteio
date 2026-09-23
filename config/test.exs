@@ -1,6 +1,12 @@
 import Config
 config :ponteio, token_signing_secret: "rJ0A7NTJ5Mi76lnPqEwkjUH00oUD4m3I"
 config :bcrypt_elixir, log_rounds: 1
+
+# The Google OAuth2 flow (issue #5) never talks to the real Google API in
+# tests — `Ponteio.Support.GoogleOAuthStub` intercepts the token exchange
+# and userinfo requests that `AshAuthentication.Strategy.OAuth2.Plug`
+# would otherwise send via `Assent.HTTPAdapter.Finch`.
+config :ash_authentication, http_adapter: Ponteio.Support.GoogleOAuthStub
 config :ash, policies: [show_policy_breakdowns?: true], disable_async?: true
 
 # Configure your database

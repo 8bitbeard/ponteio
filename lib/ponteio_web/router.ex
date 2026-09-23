@@ -51,6 +51,12 @@ defmodule PonteioWeb.Router do
     pipe_through :browser
 
     get "/", PageController, :home
+
+    # Also generates the Google OAuth2 request/callback routes (issue #5,
+    # SDD §7) for the `google` strategy on `Ponteio.Accounts.User`:
+    # `GET /auth/user/google` (starts the flow) and
+    # `GET /auth/user/google/callback` (the URI to register in the Google
+    # Cloud Console — see the README).
     auth_routes AuthController, Ponteio.Accounts.User, path: "/auth"
 
     sign_out_route AuthController, "/sign-out",
@@ -61,6 +67,7 @@ defmodule PonteioWeb.Router do
                   reset_path: "/reset",
                   auth_routes_prefix: "/auth",
                   on_mount: [{PonteioWeb.LiveUserAuth, :live_no_user}],
+                  gettext_fn: {PonteioWeb.AuthOverrides, :translate},
                   overrides: [
                     PonteioWeb.AuthOverrides,
                     AshAuthentication.Phoenix.Overrides.Default
