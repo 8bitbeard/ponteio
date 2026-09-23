@@ -24,6 +24,21 @@ RUN apt-get update -qq \
     && rm -rf /var/lib/apt/lists/* \
     && update-ca-certificates
 
+## Usuário não-root: evita que arquivos gerados dentro do container (deps,
+## _build, migrations, snapshots do Ash etc.) fiquem com dono `root` no host
+## através do bind mount `.:/app` do docker-compose.yml. UID/GID default
+## (1000) casam com o usuário padrão da maioria das distros Linux; se o seu
+## host usar outro UID/GID, sobrescreva via `--build-arg UID=$(id -u) --build-arg GID=$(id -g)`.
+ARG UID=1000
+ARG GID=1000
+
+RUN groupadd -g "${GID}" app \
+    && useradd -m -u "${UID}" -g "${GID}" -s /bin/bash app \
+    && mkdir -p /app/deps /app/_build /app/assets/node_modules \
+    && chown -R app:app /app
+
+USER app
+
 RUN mix local.hex --force \
     && mix local.rebar --force
 
