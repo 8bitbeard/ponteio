@@ -67,6 +67,24 @@ defmodule PonteioWeb.TabLive.IndexTest do
 
       assert has_element?(lv, ~s{a[phx-value-id="#{ready.id}"]}, "Excluir")
     end
+
+    test "clicking \"Excluir\" deletes the tab and removes it from the list", %{
+      conn: conn,
+      user: user
+    } do
+      tab = create_tab!(%{title: "Wave", artist: "Tom Jobim"}, user, :ready)
+
+      {:ok, lv, _html} = live(conn, ~p"/tabs")
+
+      html =
+        lv
+        |> element(~s{a[phx-value-id="#{tab.id}"]}, "Excluir")
+        |> render_click()
+
+      assert html =~ "excluída"
+      refute has_element?(lv, "#tabs")
+      assert has_element?(lv, "#tabs-empty-state")
+    end
   end
 
   defp seed_user(email) do

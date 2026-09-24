@@ -14,10 +14,16 @@ defmodule PonteioWeb.TabLive.Index do
   against the router, so using it here for a route that doesn't exist yet
   would fail to compile; a plain path keeps the shortcut visible now
   (matching the mockup, Tela 1) and starts working the moment those issues
-  add their routes. "Excluir" instead pushes a `"delete"` event — the shape
-  issue #9 ("Excluir tablatura") will actually implement — that has no
-  `handle_event` clause yet, on purpose: the resource has no `:destroy`
-  action to call until that issue adds one.
+  add their routes.
+
+  "Excluir" (issue #9, PRD §6.2) requires confirmation via the browser's
+  native `data-confirm` prompt (an explicit acceptance criterion) before it
+  even pushes the `"delete"` LiveView event, then deletes through
+  `Ponteio.Tablatures.delete_tab/2` (SDD §2.2) — scoped to the
+  authenticated actor both by fetching the record with `Ash.get!/3` and by
+  the `Tab` resource's own `:destroy` policy, so a forged id for another
+  user's tablature raises (via `Ash.get!/3`) rather than silently
+  succeeding or deleting the wrong tablature.
   """
 
   use PonteioWeb, :live_view
@@ -25,12 +31,32 @@ defmodule PonteioWeb.TabLive.Index do
   on_mount {PonteioWeb.LiveUserAuth, :live_user_required}
 
   alias Ponteio.Tablatures
+  alias Ponteio.Tablatures.Tab
 
   @impl true
   def mount(_params, _session, socket) do
     {:ok, tabs} = Tablatures.list_tabs_for_user(actor: socket.assigns.current_user)
 
     {:ok, assign(socket, tabs: tabs, page_title: "Minhas tablaturas")}
+  end
+
+  @impl true
+  def handle_event("delete", %{"id" => id}, socket) do
+    user = socket.assigns.current_user
+    tab = Ash.get!(Tab, id, actor: user, domain: Ponteio.Tablatures)
+
+    case Tablatures.delete_tab(tab, actor: user) do
+      :ok ->
+        {:ok, tabs} = Tablatures.list_tabs_for_user(actor: user)
+
+        {:noreply,
+         socket
+         |> put_flash(:info, "Tablatura \"#{tab.title}\" excluída.")
+         |> assign(tabs: tabs)}
+
+      {:error, _error} ->
+        {:noreply, put_flash(socket, :error, "Não foi possível excluir a tablatura.")}
+    end
   end
 
   @impl true
