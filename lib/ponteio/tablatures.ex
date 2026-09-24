@@ -3,9 +3,9 @@ defmodule Ponteio.Tablatures do
   Domain for tablatures and their internal structure — measures, notes, and
   chord suggestion results (per SDD §1, §2.2).
 
-  Holds the `Tab` resource, created by issue #6. `Measure`, `Note`,
-  `ChordSegment`, and `ChordSuggestion` are added in future issues, once the
-  corresponding user stories are scoped.
+  Holds the `Tab` resource, created by issue #6 and extended with listing
+  (issue #7). `Measure`, `Note`, `ChordSegment`, and `ChordSuggestion` are
+  added in future issues, once the corresponding user stories are scoped.
   """
 
   use Ash.Domain,
@@ -14,6 +14,7 @@ defmodule Ponteio.Tablatures do
   resources do
     resource Ponteio.Tablatures.Tab do
       define :create_tab, action: :create
+      define :list_tabs_for_user, action: :read
     end
   end
 end
