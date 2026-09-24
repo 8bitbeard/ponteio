@@ -1,27 +1,30 @@
 defmodule PonteioWeb.TabLive.Editor do
   @moduledoc """
-  `GET /tabs/new` — "Editor" screen, creation flow (issue #6, PRD §6.2,
-  SDD §4, §7).
+  `GET /tabs/new` and `GET /tabs/:id/edit` — "Editor" screen, both the
+  creation (issue #6) and metadata-edit (issue #8) flows, per PRD §6.2,
+  SDD §4, §7.
 
-  Builds an `AshPhoenix.Form` around the `Ponteio.Tablatures.Tab` resource's
-  `:create` action for the tablature's metadata (title, artist, capo
-  position) — the measure/note grid from the mockup's Editor screen belongs
-  to a future issue once the `Measure`/`Note` resources exist.
+  The two routes share this module, differentiated by `live_action`
+  (`:new` vs `:edit`, SDD §7): the metadata form (title, artist, capo
+  position) is identical either way, backed by an `AshPhoenix.Form` around
+  the `Ponteio.Tablatures.Tab` resource's `:create` or `:update` action.
+  For `:edit`, the tablature is loaded first (scoped to its owner by the
+  resource's read policy — a non-owner or unknown id surfaces as a 404 via
+  `Ash.get!/3`, not a silent form) and the form comes pre-filled from it.
 
-  Per SDD §7, `TabLive.Editor` also serves `GET /tabs/:id/edit` (via
-  `live_action :edit`) once issue #8 ("Editar metadados de uma tablatura")
-  implements it — this module only handles `:new` for now.
+  The measure/note grid from the mockup's Editor screen belongs to a
+  future issue once the `Measure`/`Note` resources exist.
   """
 
   use PonteioWeb, :live_view
 
   on_mount {PonteioWeb.LiveUserAuth, :live_user_required}
 
-  @impl true
-  def mount(_params, _session, socket) do
-    form = build_form(socket.assigns.current_user)
+  alias Ponteio.Tablatures.Tab
 
-    {:ok, assign(socket, form: form, page_title: "Nova tablatura")}
+  @impl true
+  def mount(params, _session, socket) do
+    {:ok, assign_for_action(socket, socket.assigns.live_action, params)}
   end
 
   @impl true
@@ -29,7 +32,7 @@ defmodule PonteioWeb.TabLive.Editor do
     ~H"""
     <Layouts.app flash={@flash}>
       <div class="flex items-center justify-between gap-4">
-        <h1 class="text-2xl font-semibold">Nova tablatura</h1>
+        <h1 class="text-2xl font-semibold">{heading(@live_action)}</h1>
         <.link navigate={~p"/tabs"} class="btn btn-ghost">Cancelar</.link>
       </div>
 
@@ -72,7 +75,7 @@ defmodule PonteioWeb.TabLive.Editor do
       {:ok, tab} ->
         {:noreply,
          socket
-         |> put_flash(:info, "Tablatura \"#{tab.title}\" criada.")
+         |> put_flash(:info, save_flash(socket.assigns.live_action, tab))
          |> redirect(to: ~p"/tabs")}
 
       {:error, form} ->
@@ -80,9 +83,35 @@ defmodule PonteioWeb.TabLive.Editor do
     end
   end
 
-  defp build_form(user) do
-    Ponteio.Tablatures.Tab
+  defp assign_for_action(socket, :new, _params) do
+    form = build_create_form(socket.assigns.current_user)
+
+    assign(socket, form: form, page_title: "Nova tablatura")
+  end
+
+  defp assign_for_action(socket, :edit, %{"id" => id}) do
+    user = socket.assigns.current_user
+    tab = Ash.get!(Tab, id, actor: user, domain: Ponteio.Tablatures)
+    form = build_update_form(tab, user)
+
+    assign(socket, form: form, page_title: "Editar tablatura")
+  end
+
+  defp build_create_form(user) do
+    Tab
     |> AshPhoenix.Form.for_create(:create, actor: user, domain: Ponteio.Tablatures)
     |> to_form()
   end
+
+  defp build_update_form(tab, user) do
+    tab
+    |> AshPhoenix.Form.for_update(:update, actor: user, domain: Ponteio.Tablatures)
+    |> to_form()
+  end
+
+  defp heading(:new), do: "Nova tablatura"
+  defp heading(:edit), do: "Editar tablatura"
+
+  defp save_flash(:new, tab), do: "Tablatura \"#{tab.title}\" criada."
+  defp save_flash(:edit, tab), do: "Tablatura \"#{tab.title}\" atualizada."
 end

@@ -42,8 +42,12 @@ defmodule PonteioWeb.Router do
       live "/tabs", TabLive.Index, :index
 
       # Creation flow (issue #6, SDD §7) — shares `TabLive.Editor` with the
-      # future edit route (`GET /tabs/:id/edit`, issue #8).
+      # edit route below (issue #8), differentiated by `live_action`.
       live "/tabs/new", TabLive.Editor, :new
+
+      # Metadata edit flow (issue #8, SDD §7) — same `TabLive.Editor`
+      # module as `/tabs/new`, `live_action: :edit`.
+      live "/tabs/:id/edit", TabLive.Editor, :edit
 
       # Authenticated password change (issue #4, third acceptance criterion) —
       # same `on_mount` guard as above, declared inside the LiveView itself.
