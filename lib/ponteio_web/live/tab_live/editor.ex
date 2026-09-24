@@ -8,9 +8,19 @@ defmodule PonteioWeb.TabLive.Editor do
   (`:new` vs `:edit`, SDD §7): the metadata form (title, artist, capo
   position) is identical either way, backed by an `AshPhoenix.Form` around
   the `Ponteio.Tablatures.Tab` resource's `:create` or `:update` action.
-  For `:edit`, the tablature is loaded first (scoped to its owner by the
-  resource's read policy — a non-owner or unknown id surfaces as a 404 via
-  `Ash.get!/3`, not a silent form) and the form comes pre-filled from it.
+
+  For `:edit`, the tablature is loaded first, scoped to its owner by the
+  resource's `:read` policy (SDD §2.2). Issue #10 ("Isolamento de
+  tablaturas por usuário") replaced the earlier `Ash.get!/3` here — which
+  let a non-owner's or unknown id crash into a bare 404 — with an explicit
+  `Ash.get/3` match: either outcome (the tab genuinely doesn't exist, or it
+  belongs to someone else — indistinguishable by design, since the read
+  policy's `access_type :filter` excludes non-owned rows from the query
+  rather than raising, precisely to avoid an enumeration oracle) is treated
+  uniformly as "not accessible to this actor" and handled as an
+  authorization-flavored denial: a flash error plus a redirect to `/tabs`,
+  never a silent crash into Phoenix's generic error page (issue #10's
+  explicit acceptance criterion).
 
   The measure/note grid from the mockup's Editor screen belongs to a
   future issue once the `Measure`/`Note` resources exist.
@@ -21,6 +31,12 @@ defmodule PonteioWeb.TabLive.Editor do
   on_mount {PonteioWeb.LiveUserAuth, :live_user_required}
 
   alias Ponteio.Tablatures.Tab
+
+  # Deliberately non-committal about *why* (issue #10): confirming "it
+  # belongs to someone else" would itself leak that the id exists, which is
+  # exactly what the read policy's filter-based scoping is designed to
+  # avoid (Ash's documented rationale for `access_type :filter` on reads).
+  @not_accessible_flash "Tablatura não encontrada ou você não tem permissão para acessá-la."
 
   @impl true
   def mount(params, _session, socket) do
@@ -91,10 +107,18 @@ defmodule PonteioWeb.TabLive.Editor do
 
   defp assign_for_action(socket, :edit, %{"id" => id}) do
     user = socket.assigns.current_user
-    tab = Ash.get!(Tab, id, actor: user, domain: Ponteio.Tablatures)
-    form = build_update_form(tab, user)
 
-    assign(socket, form: form, page_title: "Editar tablatura")
+    case Ash.get(Tab, id, actor: user, domain: Ponteio.Tablatures) do
+      {:ok, tab} ->
+        form = build_update_form(tab, user)
+
+        assign(socket, form: form, page_title: "Editar tablatura")
+
+      {:error, _error} ->
+        socket
+        |> put_flash(:error, @not_accessible_flash)
+        |> redirect(to: ~p"/tabs")
+    end
   end
 
   defp build_create_form(user) do
