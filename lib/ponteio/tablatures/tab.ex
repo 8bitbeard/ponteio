@@ -6,11 +6,21 @@ defmodule Ponteio.Tablatures.Tab do
 
   Issue #6 ("Criar nova tablatura") implemented `:create`. Issue #7
   ("Listar minhas tablaturas") added `:read`, plus the read policy that
-  keeps the listing scoped to its owner. This issue (#8, "Editar metadados
-  de uma tablatura") adds `:update`, guarded by the same
-  `user_id == actor(:id)` shape — anticipating issue #10 ("Isolamento de
-  tablaturas por usuário"), which will apply the equivalent policy to
-  `:destroy` once that action exists (issue #9).
+  keeps the listing scoped to its owner. Issue #8 ("Editar metadados de
+  uma tablatura") added `:update`, and this issue (#9, "Excluir
+  tablatura") adds `:destroy` — both guarded by that same
+  `user_id == actor(:id)` shape, anticipating issue #10 ("Isolamento de
+  tablaturas por usuário"), which formalizes the equivalent policy
+  project-wide.
+
+  There is nothing to cascade at the database level yet for `:destroy`:
+  `Measure`, `Note`, `ChordSegment` and `ChordSuggestion` don't exist as
+  resources until the `epic:editor`/`epic:chord-engine` issues that
+  introduce them — each of those is expected to declare its
+  `belongs_to :tab` with `on_delete: :delete_all` in its migration (this
+  issue's stated scope), so deleting a `Tab` removes its whole tree
+  without this issue needing to touch anything beyond the `Tab` resource
+  itself.
   """
 
   use Ash.Resource,
@@ -72,6 +82,19 @@ defmodule Ponteio.Tablatures.Tab do
       the current `capo_fret` and produces suggestions consistent with it.
       """
     end
+
+    destroy :destroy do
+      primary? true
+
+      description """
+      Deletes a tablature (issue #9, PRD §6.2). Cascading removal of
+      `Measure`/`Note`/`ChordSegment`/`ChordSuggestion` is out of scope
+      here — none of those resources exist yet, and each is expected to
+      declare its own `belongs_to :tab` with `on_delete: :delete_all` in
+      its migration once introduced, so the database itself takes care
+      of the cascade without additional code in this action.
+      """
+    end
   end
 
   policies do
@@ -96,6 +119,14 @@ defmodule Ponteio.Tablatures.Tab do
     # rather than silently succeeding or looking like a 404 (issue #8's
     # explicit acceptance criterion).
     policy action_type(:update) do
+      authorize_if expr(user_id == ^actor(:id))
+    end
+
+    # A tablature is only ever deletable by its owner (SDD §2.2, issue #9's
+    # explicit acceptance criterion) — same shape as the read policy above,
+    # so a non-owner's `:destroy` is rejected with a policy/authorization
+    # error rather than silently succeeding.
+    policy action_type(:destroy) do
       authorize_if expr(user_id == ^actor(:id))
     end
   end

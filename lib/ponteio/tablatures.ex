@@ -4,9 +4,9 @@ defmodule Ponteio.Tablatures do
   chord suggestion results (per SDD §1, §2.2).
 
   Holds the `Tab` resource, created by issue #6 and extended with listing
-  (issue #7) and metadata editing (issue #8). `Measure`, `Note`,
-  `ChordSegment`, and `ChordSuggestion` are added in future issues, once
-  the corresponding user stories are scoped.
+  (issue #7), metadata editing (issue #8), and deletion (issue #9).
+  `Measure`, `Note`, `ChordSegment`, and `ChordSuggestion` are added in
+  future issues, once the corresponding user stories are scoped.
   """
 
   use Ash.Domain,
@@ -17,6 +17,7 @@ defmodule Ponteio.Tablatures do
       define :create_tab, action: :create
       define :list_tabs_for_user, action: :read
       define :update_tab, action: :update
+      define :delete_tab, action: :destroy
     end
   end
 end
