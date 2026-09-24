@@ -4,17 +4,25 @@ defmodule Ponteio.Tablatures.Tab do
   the UI uses to know when chord analysis is pending (per PRD §6.2, SDD
   §2.2).
 
-  This foundational issue (#6, "Criar nova tablatura") only implements the
-  `:create` action — reading, updating, and deleting a tablature (and the
-  per-user isolation policy that scopes those actions to their owner) are
-  added by the later `epic:tablatures` issues (#7-#10).
+  Issue #6 ("Criar nova tablatura") implemented `:create`. This issue (#7,
+  "Listar minhas tablaturas") adds `:read`, plus the read policy that keeps
+  the listing scoped to its owner — anticipating issue #10 ("Isolamento de
+  tablaturas por usuário"), which will apply the same
+  `actor(:user).id == user_id` shape to `update`/`destroy` once those
+  actions exist (issues #8/#9).
   """
 
   use Ash.Resource,
     otp_app: :ponteio,
     domain: Ponteio.Tablatures,
     data_layer: AshPostgres.DataLayer,
-    authorizers: [Ash.Policy.Authorizer]
+    authorizers: [Ash.Policy.Authorizer],
+    # The primary (and, for now, only) `:read` action carries a `sort`
+    # preparation on purpose — it's the listing order for issue #7's
+    # "Minhas tablaturas" screen, and there is no secondary read action to
+    # move it to. Harmless for the internal uses (policy checks, relationship
+    # loading) Ash's default warning is guarding against here.
+    primary_read_warning?: false
 
   postgres do
     table "tabs"
@@ -32,6 +40,19 @@ defmodule Ponteio.Tablatures.Tab do
       # selected/submitted value (SDD §2.2's `change relate_actor(:user)`).
       change relate_actor(:user)
     end
+
+    read :read do
+      primary? true
+
+      description """
+      Lists tablatures for the "Minhas tablaturas" screen (issue #7, PRD
+      §6.2). Scoping to the authenticated actor's own tabs is enforced
+      entirely by the policy below — this action applies no manual
+      `user_id` filter (SDD §2.2, §5's `list_tabs_for_user/1`).
+      """
+
+      prepare build(sort: [inserted_at: :desc])
+    end
   end
 
   policies do
@@ -40,6 +61,14 @@ defmodule Ponteio.Tablatures.Tab do
     # "create on behalf of someone else" case to guard against here.
     policy action(:create) do
       authorize_if actor_present()
+    end
+
+    # A tablature is only ever readable by its owner (SDD §2.2, issue #10)
+    # — implemented here (ahead of #10) so `:read`/`list_tabs_for_user`
+    # never expose another user's tablatures (issue #7's stated dependency
+    # on #10).
+    policy action_type(:read) do
+      authorize_if expr(user_id == ^actor(:id))
     end
   end
 
