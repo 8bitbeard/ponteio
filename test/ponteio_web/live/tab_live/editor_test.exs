@@ -141,6 +141,84 @@ defmodule PonteioWeb.TabLive.EditorTest do
     end
   end
 
+  describe "note-entry grid (issue #11)" do
+    setup :register_and_log_in_user
+
+    test "renders a single empty measure with its trailing cell clickable", %{conn: conn} do
+      {:ok, lv, html} = live(conn, ~p"/tabs/new")
+
+      assert html =~ "Compasso 1"
+      assert has_element?(lv, "#cell-measure-1-1-0")
+      refute has_element?(lv, "#note-input-measure-1-1")
+    end
+
+    test "clicking an empty trailing cell opens an inline fret input for that string", %{
+      conn: conn
+    } do
+      {:ok, lv, _html} = live(conn, ~p"/tabs/new")
+
+      lv |> element("#cell-measure-1-1-0") |> render_click()
+
+      assert has_element?(lv, "#note-input-measure-1-1")
+    end
+
+    test "confirming with Enter creates the note and opens a new trailing column", %{conn: conn} do
+      {:ok, lv, _html} = live(conn, ~p"/tabs/new")
+
+      lv |> element("#cell-measure-1-1-0") |> render_click()
+
+      html =
+        lv
+        |> element("#note-input-measure-1-1")
+        |> render_keydown(%{"value" => "3"})
+
+      refute html =~ ~s(id="note-input-measure-1-1")
+      assert has_element?(lv, "#cell-measure-1-1-0", "3")
+      assert has_element?(lv, "#cell-measure-1-1-1")
+    end
+
+    test "confirming on blur also creates the note", %{conn: conn} do
+      {:ok, lv, _html} = live(conn, ~p"/tabs/new")
+
+      lv |> element("#cell-measure-1-2-0") |> render_click()
+
+      lv
+      |> element("#note-input-measure-1-2")
+      |> render_blur(%{"value" => "0"})
+
+      assert has_element?(lv, "#cell-measure-1-2-0", "0")
+      assert has_element?(lv, "#cell-measure-1-2-1")
+    end
+
+    test "sequential notes land in sequential columns regardless of string", %{conn: conn} do
+      {:ok, lv, _html} = live(conn, ~p"/tabs/new")
+
+      lv |> element("#cell-measure-1-1-0") |> render_click()
+      lv |> element("#note-input-measure-1-1") |> render_keydown(%{"value" => "3"})
+
+      lv |> element("#cell-measure-1-4-1") |> render_click()
+      lv |> element("#note-input-measure-1-4") |> render_keydown(%{"value" => "2"})
+
+      assert has_element?(lv, "#cell-measure-1-1-0", "3")
+      assert has_element?(lv, "#cell-measure-1-4-1", "2")
+      assert has_element?(lv, "#cell-measure-1-1-2")
+    end
+
+    test "an empty confirmation cancels without creating a note", %{conn: conn} do
+      {:ok, lv, _html} = live(conn, ~p"/tabs/new")
+
+      lv |> element("#cell-measure-1-3-0") |> render_click()
+
+      html =
+        lv
+        |> element("#note-input-measure-1-3")
+        |> render_blur(%{"value" => ""})
+
+      refute html =~ ~s(id="note-input-measure-1-3")
+      refute has_element?(lv, "#cell-measure-1-3-1")
+    end
+  end
+
   defp seed_user(email) do
     {:ok, hashed_password} = AshAuthentication.BcryptProvider.hash("supersecret123")
     Ash.Seed.seed!(User, %{email: email, hashed_password: hashed_password})
