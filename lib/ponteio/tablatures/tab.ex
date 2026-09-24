@@ -4,12 +4,13 @@ defmodule Ponteio.Tablatures.Tab do
   the UI uses to know when chord analysis is pending (per PRD §6.2, SDD
   §2.2).
 
-  Issue #6 ("Criar nova tablatura") implemented `:create`. This issue (#7,
-  "Listar minhas tablaturas") adds `:read`, plus the read policy that keeps
-  the listing scoped to its owner — anticipating issue #10 ("Isolamento de
-  tablaturas por usuário"), which will apply the same
-  `actor(:user).id == user_id` shape to `update`/`destroy` once those
-  actions exist (issues #8/#9).
+  Issue #6 ("Criar nova tablatura") implemented `:create`. Issue #7
+  ("Listar minhas tablaturas") added `:read`, plus the read policy that
+  keeps the listing scoped to its owner. This issue (#8, "Editar metadados
+  de uma tablatura") adds `:update`, guarded by the same
+  `user_id == actor(:id)` shape — anticipating issue #10 ("Isolamento de
+  tablaturas por usuário"), which will apply the equivalent policy to
+  `:destroy` once that action exists (issue #9).
   """
 
   use Ash.Resource,
@@ -53,6 +54,24 @@ defmodule Ponteio.Tablatures.Tab do
 
       prepare build(sort: [inserted_at: :desc])
     end
+
+    update :update do
+      primary? true
+      accept [:title, :artist, :capo_fret]
+
+      description """
+      Edits a tablature's metadata — title, artist, capo position (issue
+      #8, PRD §6.2). `status` and `user_id` are never accepted here, same
+      as `:create` — ownership doesn't change on edit, and `status` only
+      ever moves via the chord-analysis workflow (issue #20).
+
+      Changing `capo_fret` is an isolated mutation: it doesn't touch
+      existing `Measure`/`Note` rows, nor clear any `ChordSegment`/
+      `ChordSuggestion` already computed. The next `:run_chord_analysis`
+      run (issue #20, triggered by issue #14 on editor save) is what reads
+      the current `capo_fret` and produces suggestions consistent with it.
+      """
+    end
   end
 
   policies do
@@ -68,6 +87,15 @@ defmodule Ponteio.Tablatures.Tab do
     # never expose another user's tablatures (issue #7's stated dependency
     # on #10).
     policy action_type(:read) do
+      authorize_if expr(user_id == ^actor(:id))
+    end
+
+    # A tablature is only ever editable by its owner (SDD §2.2, issue #8's
+    # stated dependency on #10) — same shape as the read policy above, so a
+    # non-owner's `:update` is rejected with a policy/authorization error
+    # rather than silently succeeding or looking like a 404 (issue #8's
+    # explicit acceptance criterion).
+    policy action_type(:update) do
       authorize_if expr(user_id == ^actor(:id))
     end
   end
