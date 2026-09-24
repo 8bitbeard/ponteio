@@ -6,19 +6,21 @@ defmodule Ponteio.Tablatures.Tab do
 
   Issue #6 ("Criar nova tablatura") implemented `:create`. Issue #7
   ("Listar minhas tablaturas") added `:read`, plus the read policy that
-  keeps the listing scoped to its owner. This issue (#9, "Excluir
-  tablatura") adds `:destroy`, guarded by that same
-  `user_id == actor(:id)` shape — anticipating issue #10 ("Isolamento de
-  tablaturas por usuário"), which will apply the equivalent policy to
-  `:update` once that action exists (issue #8).
+  keeps the listing scoped to its owner. Issue #8 ("Editar metadados de
+  uma tablatura") added `:update`, and this issue (#9, "Excluir
+  tablatura") adds `:destroy` — both guarded by that same
+  `user_id == actor(:id)` shape, anticipating issue #10 ("Isolamento de
+  tablaturas por usuário"), which formalizes the equivalent policy
+  project-wide.
 
-  There is nothing to cascade at the database level yet: `Measure`,
-  `Note`, `ChordSegment` and `ChordSuggestion` don't exist as resources
-  until the `epic:editor`/`epic:chord-engine` issues that introduce them
-  — each of those is expected to declare its `belongs_to :tab` with
-  `on_delete: :delete_all` in its migration (this issue's stated scope),
-  so deleting a `Tab` removes its whole tree without this issue needing
-  to touch anything beyond the `Tab` resource itself.
+  There is nothing to cascade at the database level yet for `:destroy`:
+  `Measure`, `Note`, `ChordSegment` and `ChordSuggestion` don't exist as
+  resources until the `epic:editor`/`epic:chord-engine` issues that
+  introduce them — each of those is expected to declare its
+  `belongs_to :tab` with `on_delete: :delete_all` in its migration (this
+  issue's stated scope), so deleting a `Tab` removes its whole tree
+  without this issue needing to touch anything beyond the `Tab` resource
+  itself.
   """
 
   use Ash.Resource,
@@ -63,6 +65,24 @@ defmodule Ponteio.Tablatures.Tab do
       prepare build(sort: [inserted_at: :desc])
     end
 
+    update :update do
+      primary? true
+      accept [:title, :artist, :capo_fret]
+
+      description """
+      Edits a tablature's metadata — title, artist, capo position (issue
+      #8, PRD §6.2). `status` and `user_id` are never accepted here, same
+      as `:create` — ownership doesn't change on edit, and `status` only
+      ever moves via the chord-analysis workflow (issue #20).
+
+      Changing `capo_fret` is an isolated mutation: it doesn't touch
+      existing `Measure`/`Note` rows, nor clear any `ChordSegment`/
+      `ChordSuggestion` already computed. The next `:run_chord_analysis`
+      run (issue #20, triggered by issue #14 on editor save) is what reads
+      the current `capo_fret` and produces suggestions consistent with it.
+      """
+    end
+
     destroy :destroy do
       primary? true
 
@@ -90,6 +110,15 @@ defmodule Ponteio.Tablatures.Tab do
     # never expose another user's tablatures (issue #7's stated dependency
     # on #10).
     policy action_type(:read) do
+      authorize_if expr(user_id == ^actor(:id))
+    end
+
+    # A tablature is only ever editable by its owner (SDD §2.2, issue #8's
+    # stated dependency on #10) — same shape as the read policy above, so a
+    # non-owner's `:update` is rejected with a policy/authorization error
+    # rather than silently succeeding or looking like a 404 (issue #8's
+    # explicit acceptance criterion).
+    policy action_type(:update) do
       authorize_if expr(user_id == ^actor(:id))
     end
 

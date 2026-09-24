@@ -98,8 +98,10 @@ defmodule PonteioWeb.TabLive.IndexTest do
       |> Ash.Changeset.for_create(:create, params, actor: actor)
       |> Ash.create!()
 
-    # `Tab` has no `:update` action yet (issue #8) to set `status` through —
-    # seed it directly on the record for this fixture's non-draft cases.
+    # `Tab`'s `:update` action (issue #8) only accepts `title`/`artist`/
+    # `capo_fret` — `status` only ever moves via the chord-analysis workflow
+    # (issue #20), so seed it directly on the record for this fixture's
+    # non-draft cases.
     if status == :draft, do: tab, else: Ash.Seed.update!(tab, %{status: status})
   end
 end
