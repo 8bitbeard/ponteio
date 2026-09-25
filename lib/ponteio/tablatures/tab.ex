@@ -21,6 +21,20 @@ defmodule Ponteio.Tablatures.Tab do
   issue's stated scope), so deleting a `Tab` removes its whole tree
   without this issue needing to touch anything beyond the `Tab` resource
   itself.
+
+  Issue #10 ("Isolamento de tablaturas por usuário") formalized the
+  `user_id == actor(:id)` shape below as the project-wide policy pattern
+  (SDD §2.2, §7) and established how `Measure`, `Note`, `ChordSegment` and
+  `ChordSuggestion` must inherit it once each exists: not by repeating a
+  `user_id` comparison (they don't carry that column), but through their
+  relationship path back to `Tab` — e.g. `Measure`, via
+  `authorize_if relates_to_actor_via([:tab, :user])`; `Note`, via
+  `[:measure, :tab, :user]`; `ChordSegment`/`ChordSuggestion`, via their own
+  relationship chain to `Tab`. None of those resources exist in the
+  codebase yet (`epic:editor`/`epic:chord-engine`), so there is nothing to
+  apply that pattern to beyond this resource for now — the issue is scoped
+  to `Tab` plus this documented pattern for whichever of those resources
+  lands first.
   """
 
   use Ash.Resource,
@@ -105,10 +119,15 @@ defmodule Ponteio.Tablatures.Tab do
       authorize_if actor_present()
     end
 
-    # A tablature is only ever readable by its owner (SDD §2.2, issue #10)
-    # — implemented here (ahead of #10) so `:read`/`list_tabs_for_user`
-    # never expose another user's tablatures (issue #7's stated dependency
-    # on #10).
+    # A tablature is only ever readable by its owner (SDD §2.2, issue #10's
+    # canonical shape) so `:read`/`list_tabs_for_user` never expose another
+    # user's tablatures (issue #7's stated dependency on #10). This is a
+    # `:filter`-access-type check (the default) — Ash folds it into the
+    # query rather than raising, so a non-owner's `Ash.get/3` by id comes
+    # back `{:error, %Ash.Error.Invalid{errors: [%Ash.Error.Query.NotFound{}]}}`
+    # (indistinguishable from a truly unknown id), never the row itself.
+    # `TabLive.Editor`/`TabLive.Index` are the callers that turn that into
+    # a flash + redirect instead of a silent crash (issue #10).
     policy action_type(:read) do
       authorize_if expr(user_id == ^actor(:id))
     end

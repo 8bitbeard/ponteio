@@ -20,10 +20,18 @@ defmodule PonteioWeb.TabLive.Index do
   native `data-confirm` prompt (an explicit acceptance criterion) before it
   even pushes the `"delete"` LiveView event, then deletes through
   `Ponteio.Tablatures.delete_tab/2` (SDD §2.2) — scoped to the
-  authenticated actor both by fetching the record with `Ash.get!/3` and by
-  the `Tab` resource's own `:destroy` policy, so a forged id for another
-  user's tablature raises (via `Ash.get!/3`) rather than silently
-  succeeding or deleting the wrong tablature.
+  authenticated actor both by fetching the record through the `Tab`
+  resource's `:read` policy and by its own `:destroy` policy, so a forged
+  id for another user's tablature (a `phx-click`/`phx-value-id` pair a
+  malicious client could send regardless of what's actually rendered in
+  their own row list) never succeeds or deletes the wrong tablature.
+
+  Issue #10 ("Isolamento de tablaturas por usuário") replaced the earlier
+  `Ash.get!/3` lookup here — which let a forged id crash the LiveView
+  process entirely — with an explicit `Ash.get/3` match, so that case ends
+  in a flash error instead, the same "authorization denial, never a silent
+  crash" treatment `TabLive.Editor` gives the equivalent `/tabs/:id/edit`
+  case.
   """
 
   use PonteioWeb, :live_view
@@ -43,19 +51,25 @@ defmodule PonteioWeb.TabLive.Index do
   @impl true
   def handle_event("delete", %{"id" => id}, socket) do
     user = socket.assigns.current_user
-    tab = Ash.get!(Tab, id, actor: user, domain: Ponteio.Tablatures)
 
-    case Tablatures.delete_tab(tab, actor: user) do
-      :ok ->
-        {:ok, tabs} = Tablatures.list_tabs_for_user(actor: user)
+    case Ash.get(Tab, id, actor: user, domain: Ponteio.Tablatures) do
+      {:ok, tab} ->
+        case Tablatures.delete_tab(tab, actor: user) do
+          :ok ->
+            {:ok, tabs} = Tablatures.list_tabs_for_user(actor: user)
 
-        {:noreply,
-         socket
-         |> put_flash(:info, "Tablatura \"#{tab.title}\" excluída.")
-         |> assign(tabs: tabs)}
+            {:noreply,
+             socket
+             |> put_flash(:info, "Tablatura \"#{tab.title}\" excluída.")
+             |> assign(tabs: tabs)}
+
+          {:error, _error} ->
+            {:noreply, put_flash(socket, :error, "Não foi possível excluir a tablatura.")}
+        end
 
       {:error, _error} ->
-        {:noreply, put_flash(socket, :error, "Não foi possível excluir a tablatura.")}
+        {:noreply,
+         put_flash(socket, :error, "Você não tem permissão para excluir esta tablatura.")}
     end
   end
 

@@ -11,6 +11,13 @@ defmodule PonteioWeb.TabLive.EditorTest do
   `Ponteio.Tablatures.TabCreateTest`/`TabUpdateTest` (SDD §6) — this module
   only asserts on the LiveView's own outputs (redirect, flash, pre-filled
   form, rendered errors).
+
+  The "GET /tabs/:id/edit with an authenticated session" describe block's
+  last two tests cover issue #10 ("Isolamento de tablaturas por usuário"):
+  a non-owner's id (or an unknown one — the two must be indistinguishable
+  from the caller's side, see `Ponteio.Tablatures.Tab`'s moduledoc) never
+  reaches the edit form, and never crashes into a bare 404 either — it's
+  redirected to `/tabs` with an explicit flash error.
   """
 
   use PonteioWeb.ConnCase, async: true
@@ -131,13 +138,23 @@ defmodule PonteioWeb.TabLive.EditorTest do
       assert has_element?(lv, "#tab-editor-form")
     end
 
-    test "raises a not-found error when the tab belongs to another user", %{conn: conn} do
+    test "a non-owner is redirected to /tabs with a flash error, never a silent 404", %{
+      conn: conn
+    } do
       other_user = seed_user("outro@ponteio.app")
       their_tab = create_tab!(%{title: "Oceano", artist: "Djavan"}, other_user)
 
-      assert_error_sent 404, fn ->
-        live(conn, ~p"/tabs/#{their_tab.id}/edit")
-      end
+      assert {:error, {:redirect, %{to: "/tabs", flash: flash}}} =
+               live(conn, ~p"/tabs/#{their_tab.id}/edit")
+
+      assert flash["error"] =~ "não tem permissão"
+    end
+
+    test "an unknown id is redirected the same way, with the same flash", %{conn: conn} do
+      assert {:error, {:redirect, %{to: "/tabs", flash: flash}}} =
+               live(conn, ~p"/tabs/#{Ecto.UUID.generate()}/edit")
+
+      assert flash["error"] =~ "não tem permissão"
     end
   end
 
