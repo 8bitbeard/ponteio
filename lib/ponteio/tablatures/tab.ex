@@ -35,6 +35,13 @@ defmodule Ponteio.Tablatures.Tab do
   apply that pattern to beyond this resource for now — the issue is scoped
   to `Tab` plus this documented pattern for whichever of those resources
   lands first.
+
+  Issue #14 ("Salvar edições do editor e disparar recálculo de sugestões")
+  added `:upsert_measure_notes` — the action `TabLive.Editor`'s
+  `phx-submit` calls to persist the whole compasso/nota tree the editor
+  built up as local assigns (issues #11-#13) and flip `status` back to
+  `:draft`, in one transaction (PRD §6.4 regra 6; SDD §3.4, §5). See its
+  own description for the persistence rule.
   """
 
   use Ash.Resource,
@@ -109,6 +116,44 @@ defmodule Ponteio.Tablatures.Tab do
       of the cascade without additional code in this action.
       """
     end
+
+    update :upsert_measure_notes do
+      accept []
+      require_atomic? false
+
+      description """
+      Persists `TabLive.Editor`'s entire compasso/nota tree in one
+      transaction and marks the tab `status: :draft` (issue #14, PRD §6.4
+      regra 6; SDD §3.4, §5) — called once, on `phx-submit`, never per
+      keystroke (SDD §3.4's "não a cada tecla digitada"). The `:draft`
+      status is the side effect issue #20's AshOban trigger (not yet
+      implemented) will watch for to enqueue `:run_chord_analysis`
+      automatically; this action's job stops at setting it.
+
+      `measures` replaces the tab's whole `Measure`/`Note` tree —
+      `Ponteio.Tablatures.Changes.UpsertMeasureNotes` destroys every
+      existing `Measure` (cascading to its `Note`s at the database level)
+      and recreates the submitted list fresh, which is correct either way
+      since the editor always submits the complete current picture, never
+      a diff (issues #11-#13).
+      """
+
+      argument :measures, {:array, :map} do
+        allow_nil? false
+        default []
+
+        description """
+        One entry per compasso, in playing order: `%{position: pos,
+        notes: [%{string_number:, fret_number:, position:}, ...]}` — the
+        same shape `TabLive.Editor` keeps as `@measures` (its `:id` key,
+        a purely local editor/DOM handle, is ignored here; persisted
+        `Measure`/`Note` rows get their own generated ids).
+        """
+      end
+
+      change set_attribute(:status, :draft)
+      change Ponteio.Tablatures.Changes.UpsertMeasureNotes
+    end
   end
 
   policies do
@@ -136,7 +181,10 @@ defmodule Ponteio.Tablatures.Tab do
     # stated dependency on #10) — same shape as the read policy above, so a
     # non-owner's `:update` is rejected with a policy/authorization error
     # rather than silently succeeding or looking like a 404 (issue #8's
-    # explicit acceptance criterion).
+    # explicit acceptance criterion). `action_type(:update)` also covers
+    # `:upsert_measure_notes` (issue #14) for free — it's an `update`
+    # action too, so a non-owner is rejected here before
+    # `Changes.UpsertMeasureNotes` ever touches a `Measure`/`Note`.
     policy action_type(:update) do
       authorize_if expr(user_id == ^actor(:id))
     end

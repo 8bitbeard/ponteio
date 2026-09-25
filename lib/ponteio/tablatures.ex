@@ -12,10 +12,13 @@ defmodule Ponteio.Tablatures do
   and `ChordSuggestion` are added in future issues, once the corresponding
   user stories are scoped.
 
-  Neither `Measure` nor `Note` has a code interface entry yet — no caller
-  invokes their actions directly; `TabLive.Editor`'s note-entry grid (issue
-  #11) keeps edits as local assigns, and `upsert_measure_notes` (issue
-  #14) is what will eventually call into them in bulk and warrant one.
+  Neither `Measure` nor `Note` has a code interface entry — no LiveView
+  calls their actions directly; `TabLive.Editor`'s note-entry grid (issues
+  #11-#13) keeps edits as local assigns, and `upsert_measure_notes` (issue
+  #14) is what persists that tree in bulk on save, via
+  `Ponteio.Tablatures.Changes.UpsertMeasureNotes` calling `Ash.create!`/
+  `Ash.destroy!` on those two resources directly — a one-off, internal-only
+  caller that doesn't itself warrant a code interface entry for either.
   """
 
   use Ash.Domain,
@@ -27,6 +30,7 @@ defmodule Ponteio.Tablatures do
       define :list_tabs_for_user, action: :read
       define :update_tab, action: :update
       define :delete_tab, action: :destroy
+      define :upsert_measure_notes, action: :upsert_measure_notes, args: [:measures]
     end
 
     resource Ponteio.Tablatures.Measure
