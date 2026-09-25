@@ -319,6 +319,138 @@ defmodule PonteioWeb.TabLive.EditorTest do
     end
   end
 
+  describe "editing/removing notes and measures (issue #13)" do
+    setup :register_and_log_in_user
+
+    test "clicking an existing note opens the inline edit form pre-filled with its values", %{
+      conn: conn
+    } do
+      {:ok, lv, _html} = live(conn, ~p"/tabs/new")
+
+      lv |> element("#cell-measure-1-1-0") |> render_click()
+      lv |> element("#note-input-measure-1-1") |> render_keydown(%{"value" => "3"})
+
+      refute has_element?(lv, "#edit-note-form-measure-1-0")
+
+      html = lv |> element("#cell-measure-1-1-0") |> render_click()
+
+      assert has_element?(lv, "#edit-note-form-measure-1-0")
+      assert html =~ ~s(value="3")
+    end
+
+    test "confirming the edit form updates the fret in place, keeping the note's position", %{
+      conn: conn
+    } do
+      {:ok, lv, _html} = live(conn, ~p"/tabs/new")
+
+      lv |> element("#cell-measure-1-1-0") |> render_click()
+      lv |> element("#note-input-measure-1-1") |> render_keydown(%{"value" => "3"})
+
+      lv |> element("#cell-measure-1-1-0") |> render_click()
+
+      html =
+        lv
+        |> form("#edit-note-form-measure-1-0", note: %{"string" => "1", "fret" => "9"})
+        |> render_submit()
+
+      refute html =~ ~s(id="edit-note-form-measure-1-0")
+      assert has_element?(lv, "#cell-measure-1-1-0", "9")
+      refute has_element?(lv, "#cell-measure-1-1-1", "9")
+    end
+
+    test "confirming the edit form with a different corda moves the note to that string's row",
+         %{conn: conn} do
+      {:ok, lv, _html} = live(conn, ~p"/tabs/new")
+
+      lv |> element("#cell-measure-1-1-0") |> render_click()
+      lv |> element("#note-input-measure-1-1") |> render_keydown(%{"value" => "3"})
+
+      lv |> element("#cell-measure-1-1-0") |> render_click()
+
+      lv
+      |> form("#edit-note-form-measure-1-0", note: %{"string" => "4", "fret" => "3"})
+      |> render_submit()
+
+      refute has_element?(lv, "#cell-measure-1-1-0", "3")
+      assert has_element?(lv, "#cell-measure-1-4-0", "3")
+    end
+
+    test "removing a note from the middle of a measure reindexes the remaining notes with no gaps",
+         %{conn: conn} do
+      {:ok, lv, _html} = live(conn, ~p"/tabs/new")
+
+      for {fret, column} <- Enum.with_index(["3", "5", "7"]) do
+        lv |> element("#cell-measure-1-1-#{column}") |> render_click()
+        lv |> element("#note-input-measure-1-1") |> render_keydown(%{"value" => fret})
+      end
+
+      lv |> element("#cell-measure-1-1-1") |> render_click()
+      html = lv |> element("#remove-note-measure-1-1") |> render_click()
+
+      refute html =~ ~s(id="edit-note-form-measure-1-1")
+      assert has_element?(lv, "#cell-measure-1-1-0", "3")
+      assert has_element?(lv, "#cell-measure-1-1-1", "7")
+      refute has_element?(lv, "#cell-measure-1-1-2", "5")
+      refute has_element?(lv, "#cell-measure-1-1-2", "7")
+    end
+
+    test "a single measure has no remove-measure control", %{conn: conn} do
+      {:ok, lv, _html} = live(conn, ~p"/tabs/new")
+
+      refute has_element?(lv, "#remove-measure-measure-1")
+    end
+
+    test "removing a middle measure's marker merges its notes after the previous measure's, in order",
+         %{conn: conn} do
+      {:ok, lv, _html} = live(conn, ~p"/tabs/new")
+
+      # Compasso 1: fret 3 on string 1.
+      lv |> element("#cell-measure-1-1-0") |> render_click()
+      lv |> element("#note-input-measure-1-1") |> render_keydown(%{"value" => "3"})
+
+      # Compasso 2: fret 5 on string 1.
+      lv |> element("button", "+ Adicionar compasso") |> render_click()
+      lv |> element("#cell-measure-2-1-0") |> render_click()
+      lv |> element("#note-input-measure-2-1") |> render_keydown(%{"value" => "5"})
+
+      # Compasso 3, so Compasso 2 is a genuine "middle" measure.
+      lv |> element("button", "+ Adicionar compasso") |> render_click()
+
+      html = lv |> element("#remove-measure-measure-2") |> render_click()
+
+      assert html =~ "Compasso 1"
+      assert html =~ "Compasso 2"
+      refute html =~ "Compasso 3"
+
+      assert has_element?(lv, "#cell-measure-1-1-0", "3")
+      assert has_element?(lv, "#cell-measure-1-1-1", "5")
+    end
+
+    test "removing the first measure's marker merges its notes before the next measure's, which becomes the new first",
+         %{conn: conn} do
+      {:ok, lv, _html} = live(conn, ~p"/tabs/new")
+
+      # Compasso 1: fret 3 on string 1.
+      lv |> element("#cell-measure-1-1-0") |> render_click()
+      lv |> element("#note-input-measure-1-1") |> render_keydown(%{"value" => "3"})
+
+      # Compasso 2: fret 5 on string 1.
+      lv |> element("button", "+ Adicionar compasso") |> render_click()
+      lv |> element("#cell-measure-2-1-0") |> render_click()
+      lv |> element("#note-input-measure-2-1") |> render_keydown(%{"value" => "5"})
+
+      html = lv |> element("#remove-measure-measure-1") |> render_click()
+
+      assert html =~ "Compasso 1"
+      refute html =~ "Compasso 2"
+
+      # measure-2's own id survives (it becomes the new first), now holding
+      # both notes in chronological order: measure 1's note first.
+      assert has_element?(lv, "#cell-measure-2-1-0", "3")
+      assert has_element?(lv, "#cell-measure-2-1-1", "5")
+    end
+  end
+
   defp seed_user(email) do
     {:ok, hashed_password} = AshAuthentication.BcryptProvider.hash("supersecret123")
     Ash.Seed.seed!(User, %{email: email, hashed_password: hashed_password})
