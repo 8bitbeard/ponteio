@@ -30,7 +30,33 @@ defmodule PonteioWeb.TabLive.MeasureEditorComponent do
   Cells in already-committed columns that aren't the one note actually
   present are inert placeholders, not editable — issue #11 only wires the
   trailing-column "append a note" flow; editing/removing an existing
-  note is issue #13's scope.
+  note is issue #13's scope, described below.
+
+  ## Editing/removing an existing note (issue #13)
+
+  Clicking a note chip (`start_edit_note`) opens an inline edit form in
+  that same cell — unlike the trailing flow's single fret input, this one
+  has **two** fields (a corda `<select>` plus a casa number input),
+  because either — or both — may change (`update_note/4` looks the note
+  up by position alone, never by its old string, so moving it to a
+  different string is exactly as valid as changing its fret). A real
+  `<.form>` with `phx-submit="confirm_edit_note"` is used instead of the
+  trailing flow's `phx-keydown`/`phx-blur` pair, since with two fields
+  there's no single element whose blur unambiguously means "done
+  editing" — pressing Enter in either field submits it natively. A
+  trash-icon button alongside it fires `remove_note` directly, no
+  confirmation step (mirrors how confirming a fret of "" silently
+  cancels rather than erroring — this editor treats its local,
+  not-yet-persisted state as cheap to correct).
+
+  ## Removing a compasso's marker (issue #13)
+
+  A trash-icon button in the `measure-head`, `remove_measure`, lets the
+  editor fold this measure's notes into an adjacent one (`Editor`'s
+  moduledoc has the merge rule). It's only rendered when `removable?` is
+  true — the parent passes `length(@measures) > 1`, since a tablature
+  must always keep at least one measure and this grid has no other place
+  that enforces that invariant.
 
   ## Breaking a measure mid-sequence (issue #12)
 
@@ -55,6 +81,7 @@ defmodule PonteioWeb.TabLive.MeasureEditorComponent do
 
   attr :measure, :map, required: true
   attr :editing, :any, default: nil
+  attr :removable?, :boolean, default: false
 
   def measure_editor(assigns) do
     assigns =
@@ -68,6 +95,18 @@ defmodule PonteioWeb.TabLive.MeasureEditorComponent do
         <span class="text-sm font-semibold text-base-content/70">
           Compasso {@measure.position}
         </span>
+
+        <button
+          :if={@removable?}
+          type="button"
+          id={"remove-measure-#{@measure.id}"}
+          phx-click="remove_measure"
+          phx-value-measure={@measure.id}
+          title="Remover marcador de compasso"
+          class="text-base-content/40 hover:text-error transition-colors"
+        >
+          <.icon name="hero-trash" class="size-4" />
+        </button>
       </div>
 
       <div class="flex flex-col gap-1">
@@ -132,6 +171,17 @@ defmodule PonteioWeb.TabLive.MeasureEditorComponent do
           assigns.trailing? and assigns.editing == {assigns.measure.id, assigns.string_number}
         )
       end)
+      |> then(fn assigns ->
+        assign(
+          assigns,
+          :editing_note?,
+          not is_nil(assigns.note) and
+            assigns.editing == {assigns.measure.id, :edit, assigns.note.position}
+        )
+      end)
+      |> then(fn assigns ->
+        assign(assigns, :note_form, note_form(assigns.note))
+      end)
 
     ~H"""
     <div
@@ -155,9 +205,59 @@ defmodule PonteioWeb.TabLive.MeasureEditorComponent do
     </div>
 
     <div
-      :if={not @editing_this_cell? and @note}
+      :if={@editing_note?}
       id={@id}
       class="relative h-full border-b border-base-300"
+    >
+      <span class="absolute inset-0 flex items-center justify-center">
+        <span class="flex items-center justify-center w-5 h-5 rounded-full bg-primary text-primary-content text-xs font-bold">
+          {@note.fret_number}
+        </span>
+      </span>
+
+      <.form
+        for={@note_form}
+        id={"edit-note-form-#{@measure.id}-#{@note.position}"}
+        phx-submit="confirm_edit_note"
+        phx-value-measure={@measure.id}
+        phx-value-position={@note.position}
+        class="absolute z-10 top-full left-1/2 -translate-x-1/2 mt-1 flex items-end gap-1 rounded border border-primary bg-base-100 p-1 shadow-lg w-max"
+      >
+        <.input
+          field={@note_form[:string]}
+          type="select"
+          options={string_select_options()}
+          class="select select-xs w-16"
+        />
+        <.input
+          field={@note_form[:fret]}
+          type="number"
+          min="0"
+          autofocus
+          class="input input-xs w-12"
+        />
+        <button
+          type="button"
+          id={"remove-note-#{@measure.id}-#{@note.position}"}
+          phx-click="remove_note"
+          phx-value-measure={@measure.id}
+          phx-value-position={@note.position}
+          title="Remover nota"
+          class="text-base-content/40 hover:text-error transition-colors pb-2"
+        >
+          <.icon name="hero-trash" class="size-3" />
+        </button>
+      </.form>
+    </div>
+
+    <div
+      :if={not @editing_this_cell? and not @editing_note? and @note}
+      id={@id}
+      phx-click="start_edit_note"
+      phx-value-measure={@measure.id}
+      phx-value-string={@string_number}
+      phx-value-position={@note.position}
+      class="relative h-full border-b border-base-300 cursor-pointer"
     >
       <span class="absolute inset-0 flex items-center justify-center">
         <span class="flex items-center justify-center w-5 h-5 rounded-full bg-primary text-primary-content text-xs font-bold">
@@ -194,4 +294,19 @@ defmodule PonteioWeb.TabLive.MeasureEditorComponent do
   end
 
   defp string_label(string_number), do: Map.fetch!(@string_labels, string_number)
+
+  # Backs the edit-note form's two fields (issue #13) with the note's
+  # current values, so reopening a note's edit UI always starts from what
+  # it's actually set to. `nil` when there's no note to edit — every
+  # caller only renders this form when `@note` is present, but `cell/1`
+  # computes it unconditionally alongside the other assigns.
+  defp note_form(nil), do: nil
+
+  defp note_form(note) do
+    to_form(%{"string" => to_string(note.string_number), "fret" => to_string(note.fret_number)},
+      as: :note
+    )
+  end
+
+  defp string_select_options, do: for(string <- @strings, do: {string_label(string), string})
 end

@@ -58,6 +58,51 @@ defmodule PonteioWeb.TabLive.Editor do
   (`next_measure_seq` hands out the next one) — `position` gets rewritten
   on every split/reindex, but `id` is what `phx-value-measure` and DOM ids
   key off of, so it must never change under an already-rendered card.
+
+  ## Editing/removing notes and measures (issue #13)
+
+  `@editing` now holds either shape, distinguished by tuple arity so both
+  can share the one assign without ambiguity:
+
+    * `{measure_id, string_number}` — the issue #11 "insert a new note in
+      the trailing column" flow, unchanged.
+    * `{measure_id, :edit, position}` — new: editing an **existing** note
+      (clicking its chip opens an inline form, `MeasureEditorComponent`'s
+      `cell/1`, with a corda `<select>` and a casa number input instead
+      of the single fret input the trailing flow uses, since either
+      field — or both — may change). Deliberately keyed by `position`
+      alone, not `string_number`: if editing changed the note's string,
+      keying by the *old* string would stop matching the note's new cell
+      the moment it re-rendered on a different row, silently closing the
+      form out from under the user.
+
+  `update_note/4` looks the note up by `{measure_id, position}` alone
+  (never by its old `string_number`) because the insertion model
+  guarantees at most one note per position within a measure — position is
+  insertion order, not a per-string slot — so position alone is already a
+  unique key. `delete_note/2` removes the note at a given position and
+  renumbers the rest of that measure's notes from their new list order,
+  the same "recompute positions from list index" trick `reindex_measures/1`
+  already uses for measures.
+
+  `remove_measure/2` implements the issue's merge rule: a removed
+  measure's notes are folded into an adjacent measure rather than
+  discarded, preserving chronological order —
+
+    * removing any measure but the first appends its notes after the
+      **previous** measure's own notes (the previous measure was played
+      first);
+    * removing the first measure prepends its notes before the **next**
+      measure's own notes instead (symmetric reasoning: the removed
+      measure was played first), and that next measure becomes the new
+      first.
+
+  Either way every surviving measure is renumbered by `reindex_measures/1`
+  afterwards. A tablature must always keep at least one measure, so
+  `MeasureEditorComponent` only renders the remove-measure control when
+  more than one measure exists (`removable?`) — there is deliberately no
+  server-side guard beyond that, mirroring how `start_note`/`break_measure`
+  already treat a stale/unknown id as a silent no-op rather than raising.
   """
 
   use PonteioWeb, :live_view
@@ -123,6 +168,7 @@ defmodule PonteioWeb.TabLive.Editor do
         :for={measure <- @measures}
         measure={measure}
         editing={@editing}
+        removable?={length(@measures) > 1}
       />
 
       <button type="button" class="btn btn-ghost" phx-click="add_measure">
@@ -179,6 +225,54 @@ defmodule PonteioWeb.TabLive.Editor do
     {measures, seq} = split_measure(socket.assigns.measures, measure_id, column, seq)
 
     {:noreply, assign(socket, measures: measures, next_measure_seq: seq)}
+  end
+
+  def handle_event(
+        "start_edit_note",
+        %{"measure" => measure_id, "position" => position},
+        socket
+      ) do
+    editing = {measure_id, :edit, String.to_integer(position)}
+
+    {:noreply, assign(socket, editing: editing)}
+  end
+
+  def handle_event(
+        "confirm_edit_note",
+        %{
+          "measure" => measure_id,
+          "position" => position,
+          "note" => %{"string" => string, "fret" => fret}
+        },
+        socket
+      ) do
+    position = String.to_integer(position)
+
+    measures =
+      with {:ok, string_number} <- parse_string_number(string),
+           {:ok, fret_number} <- parse_fret(fret) do
+        update_note(socket.assigns.measures, measure_id, position, string_number, fret_number)
+      else
+        :error -> socket.assigns.measures
+      end
+
+    {:noreply, assign(socket, measures: measures, editing: nil)}
+  end
+
+  def handle_event(
+        "remove_note",
+        %{"measure" => measure_id, "position" => position},
+        socket
+      ) do
+    measures = delete_note(socket.assigns.measures, measure_id, String.to_integer(position))
+
+    {:noreply, assign(socket, measures: measures, editing: nil)}
+  end
+
+  def handle_event("remove_measure", %{"measure" => measure_id}, socket) do
+    measures = remove_measure(socket.assigns.measures, measure_id)
+
+    {:noreply, assign(socket, measures: measures)}
   end
 
   def handle_event("save", %{"form" => params}, socket) do
@@ -240,6 +334,16 @@ defmodule PonteioWeb.TabLive.Editor do
     end
   end
 
+  # Mirrors parse_fret/1's "silently cancel instead of erroring" contract,
+  # but bounded to the six playable strings (issue #13's corda select only
+  # ever submits 1..6, this guards a hand-crafted request the same way).
+  defp parse_string_number(value) do
+    case Integer.parse(String.trim(to_string(value))) do
+      {string_number, ""} when string_number in 1..6 -> {:ok, string_number}
+      _ -> :error
+    end
+  end
+
   # Appends a note to the given measure's local note list. `position` is
   # the note's index within that list — i.e. insertion order, per this
   # issue's acceptance criterion — not a musical time value.
@@ -257,6 +361,117 @@ defmodule PonteioWeb.TabLive.Editor do
       measure ->
         measure
     end)
+  end
+
+  # Updates the corda/casa of the note at `position` within `measure_id`
+  # (issue #13, "alterar corda/casa de uma nota existente"). Looked up by
+  # position alone — never by the note's old string_number — because the
+  # insertion flow (issue #11) guarantees at most one note per position in
+  # a measure, so position is already a unique key on its own. An unknown
+  # measure_id/position (stale DOM event) is a no-op, same convention as
+  # split_measure/4.
+  defp update_note(measures, measure_id, position, string_number, fret_number) do
+    Enum.map(measures, fn
+      %{id: ^measure_id} = measure ->
+        notes =
+          Enum.map(measure.notes, fn
+            %{position: ^position} = note ->
+              %{note | string_number: string_number, fret_number: fret_number}
+
+            note ->
+              note
+          end)
+
+        %{measure | notes: notes}
+
+      measure ->
+        measure
+    end)
+  end
+
+  # Removes the note at `position` within `measure_id` (issue #13,
+  # "remover uma nota"), then renumbers the remaining notes' `position`
+  # from their new list order so they stay a contiguous, gap-free sequence
+  # — the same "recompute from list index" trick reindex_measures/1 uses
+  # for measures. An unknown measure_id/position is a no-op.
+  defp delete_note(measures, measure_id, position) do
+    Enum.map(measures, fn
+      %{id: ^measure_id} = measure ->
+        notes =
+          measure.notes
+          |> Enum.reject(&(&1.position == position))
+          |> Enum.sort_by(& &1.position)
+          |> Enum.with_index()
+          |> Enum.map(fn {note, position} -> %{note | position: position} end)
+
+        %{measure | notes: notes}
+
+      measure ->
+        measure
+    end)
+  end
+
+  # Removes `measure_id`'s marker (issue #13, "remover um marcador de
+  # compasso") by folding its notes into an adjacent measure, preserving
+  # chronological order:
+  #
+  #   * any measure but the first merges into the PREVIOUS one, its notes
+  #     appended after the previous measure's own notes (the previous
+  #     measure was played first);
+  #   * the first measure merges into the NEXT one instead, its notes
+  #     prepended before the next measure's own notes (symmetric
+  #     reasoning: the removed first measure was played first) — that
+  #     next measure becomes the new first.
+  #
+  # Either branch renumbers the merged notes' `position` from their new
+  # list order, then reindex_measures/1 renumbers every surviving
+  # measure's `position`. A single remaining measure has no adjacent
+  # measure to merge into — the UI never renders the remove control in
+  # that case (see `removable?` in MeasureEditorComponent), so this is a
+  # no-op rather than a guard, same convention as split_measure/4 for an
+  # unknown measure_id.
+  defp remove_measure(measures, measure_id) do
+    case Enum.find_index(measures, &(&1.id == measure_id)) do
+      nil ->
+        measures
+
+      0 ->
+        case measures do
+          [removed, next | rest] ->
+            # `next` survives (its id, not `removed`'s) and becomes the new
+            # first — `removed`'s notes are prepended before its own.
+            [merge_notes(next, removed.notes, next.notes) | rest] |> reindex_measures()
+
+          [_only] ->
+            measures
+        end
+
+      index ->
+        removed = Enum.at(measures, index)
+        previous = Enum.at(measures, index - 1)
+        # `previous` survives — `removed`'s notes are appended after its own.
+        merged = merge_notes(previous, previous.notes, removed.notes)
+
+        measures
+        |> List.replace_at(index - 1, merged)
+        |> List.delete_at(index)
+        |> reindex_measures()
+    end
+  end
+
+  # Builds the merged measure that survives a remove_measure/2 fold: it
+  # keeps `keep_measure`'s own id (not the removed measure's — the id is
+  # only a local editor handle, but keeping the *surviving* one's is what
+  # makes "the next measure becomes the new first" true rather than just
+  # cosmetically true), with `notes_before ++ notes_after` renumbered from
+  # their new list order.
+  defp merge_notes(keep_measure, notes_before, notes_after) do
+    notes =
+      (notes_before ++ notes_after)
+      |> Enum.with_index()
+      |> Enum.map(fn {note, position} -> %{note | position: position} end)
+
+    %{keep_measure | notes: notes}
   end
 
   # Splits `measure_id`'s notes at `column` (issue #12, "Quebrar compasso
