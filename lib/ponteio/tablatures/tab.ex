@@ -193,5 +193,7 @@ defmodule Ponteio.Tablatures.Tab do
     belongs_to :user, Ponteio.Accounts.User do
       allow_nil? false
     end
+
+    has_many :measures, Ponteio.Tablatures.Measure
   end
 end
