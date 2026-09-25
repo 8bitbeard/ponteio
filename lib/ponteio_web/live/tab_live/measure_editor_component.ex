@@ -31,9 +31,24 @@ defmodule PonteioWeb.TabLive.MeasureEditorComponent do
   present are inert placeholders, not editable — issue #11 only wires the
   trailing-column "append a note" flow; editing/removing an existing
   note is issue #13's scope.
+
+  ## Breaking a measure mid-sequence (issue #12)
+
+  A thin "control row" sits above the string rows, sharing the exact same
+  `grid-template-columns` as they do so its buttons line up one-per-column.
+  Each column (note columns and the trailing empty one alike — the issue's
+  "cada coluna do grid de notas" draws no exception for it) gets a small
+  scissors button emitting `break_measure` with the owning measure and that
+  column index; `PonteioWeb.TabLive.Editor` is what actually splits the
+  measure's notes and reindexes `position` across the local `@measures`
+  list, the same "parent LiveView owns all state, child just emits
+  `phx-value-*` events" split issue #11 established for `start_note`/
+  `confirm_note`. This is the extension of `tab-cell`/`measure-card` the
+  issue calls for — the static mockup only shows already-whole
+  `measure-card`s, it doesn't draw this affordance.
   """
 
-  use Phoenix.Component
+  use PonteioWeb, :html
 
   @strings 1..6
   @string_labels %{1 => "e", 2 => "B", 3 => "G", 4 => "D", 5 => "A", 6 => "E"}
@@ -56,6 +71,26 @@ defmodule PonteioWeb.TabLive.MeasureEditorComponent do
       </div>
 
       <div class="flex flex-col gap-1">
+        <div
+          class="grid items-center h-4"
+          style={"grid-template-columns: 1.5rem repeat(#{@column_count}, 2.5rem);"}
+        >
+          <span></span>
+
+          <button
+            :for={column <- 0..(@column_count - 1)}
+            type="button"
+            id={"break-#{@measure.id}-#{column}"}
+            phx-click="break_measure"
+            phx-value-measure={@measure.id}
+            phx-value-column={column}
+            title="Quebrar compasso aqui"
+            class="flex items-center justify-center text-base-content/20 hover:text-primary transition-colors"
+          >
+            <.icon name="hero-scissors" class="size-3" />
+          </button>
+        </div>
+
         <div
           :for={string_number <- @strings}
           class="grid items-center h-7"

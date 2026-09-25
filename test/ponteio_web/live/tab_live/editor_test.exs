@@ -236,6 +236,89 @@ defmodule PonteioWeb.TabLive.EditorTest do
     end
   end
 
+  describe "measure markers (issue #12)" do
+    setup :register_and_log_in_user
+
+    test "adding a measure at the end creates an empty measure-card", %{conn: conn} do
+      {:ok, lv, html} = live(conn, ~p"/tabs/new")
+
+      assert html =~ "Compasso 1"
+      refute html =~ "Compasso 2"
+
+      html = lv |> element("button", "+ Adicionar compasso") |> render_click()
+
+      assert html =~ "Compasso 1"
+      assert html =~ "Compasso 2"
+      assert has_element?(lv, "#cell-measure-2-1-0")
+      refute has_element?(lv, "#cell-measure-2-1-1")
+    end
+
+    test "adding two measures keeps them ordered by position", %{conn: conn} do
+      {:ok, lv, _html} = live(conn, ~p"/tabs/new")
+
+      lv |> element("button", "+ Adicionar compasso") |> render_click()
+      html = lv |> element("button", "+ Adicionar compasso") |> render_click()
+
+      assert html =~ "Compasso 1"
+      assert html =~ "Compasso 2"
+      assert html =~ "Compasso 3"
+    end
+
+    test "breaking a measure mid-sequence moves the notes from that column onward into a new, following measure",
+         %{conn: conn} do
+      {:ok, lv, _html} = live(conn, ~p"/tabs/new")
+
+      # Three notes on string 1 of "Compasso 1", landing in columns 0, 1, 2 —
+      # each note commits into the current trailing column, which shifts one
+      # column right afterwards (issue #11's insertion flow).
+      for {fret, column} <- Enum.with_index(["3", "5", "7"]) do
+        lv |> element("#cell-measure-1-1-#{column}") |> render_click()
+        lv |> element("#note-input-measure-1-1") |> render_keydown(%{"value" => fret})
+      end
+
+      assert has_element?(lv, "#cell-measure-1-1-0", "3")
+      assert has_element?(lv, "#cell-measure-1-1-1", "5")
+      assert has_element?(lv, "#cell-measure-1-1-2", "7")
+
+      # Break right before the second note (column 1): "5" and "7" move to
+      # the new "Compasso 2", "3" stays behind in "Compasso 1".
+      html = lv |> element("#break-measure-1-1") |> render_click()
+
+      assert html =~ "Compasso 1"
+      assert html =~ "Compasso 2"
+
+      assert has_element?(lv, "#cell-measure-1-1-0", "3")
+      refute has_element?(lv, "#cell-measure-1-1-1", "5")
+      assert has_element?(lv, "#cell-measure-1-1-1")
+
+      assert has_element?(lv, "#cell-measure-2-1-0", "5")
+      assert has_element?(lv, "#cell-measure-2-1-1", "7")
+    end
+
+    test "breaking a measure reindexes the position of measures that come after it", %{
+      conn: conn
+    } do
+      {:ok, lv, _html} = live(conn, ~p"/tabs/new")
+
+      # Compasso 1 gets one note, then a second, already-existing empty
+      # "Compasso 2" is added after it.
+      lv |> element("#cell-measure-1-1-0") |> render_click()
+      lv |> element("#note-input-measure-1-1") |> render_keydown(%{"value" => "3"})
+      lv |> element("button", "+ Adicionar compasso") |> render_click()
+
+      # Breaking Compasso 1 at column 0 pushes ALL of its content into a
+      # brand-new measure inserted between it and the original Compasso 2 —
+      # which must be renumbered from "Compasso 2" to "Compasso 3".
+      html = lv |> element("#break-measure-1-0") |> render_click()
+
+      assert html =~ "Compasso 1"
+      assert html =~ "Compasso 2"
+      assert html =~ "Compasso 3"
+      assert has_element?(lv, "#cell-measure-3-1-0")
+      assert has_element?(lv, "#cell-measure-2-1-0")
+    end
+  end
+
   defp seed_user(email) do
     {:ok, hashed_password} = AshAuthentication.BcryptProvider.hash("supersecret123")
     Ash.Seed.seed!(User, %{email: email, hashed_password: hashed_password})
