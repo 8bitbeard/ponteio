@@ -5,6 +5,12 @@ defmodule PonteioWeb.TabLive.IndexTest do
   module asserts the listing itself only shows the authenticated user's own
   tablatures, each with title/artist/status and its row shortcuts (issue
   #7's stated test plan).
+
+  The last test in "with an authenticated session" covers issue #10
+  ("Isolamento de tablaturas por usuário"): a forged `"delete"` event
+  naming another user's tab id must be rejected — flash error, no crash,
+  no deletion — the same "explicit authorization denial" treatment
+  `TabLive.Editor` gives a forged `/tabs/:id/edit`.
   """
 
   use PonteioWeb.ConnCase, async: true
@@ -12,6 +18,7 @@ defmodule PonteioWeb.TabLive.IndexTest do
   import Phoenix.LiveViewTest
 
   alias Ponteio.Accounts.User
+  alias Ponteio.Tablatures
   alias Ponteio.Tablatures.Tab
 
   test "redirects an unauthenticated visitor to /sign-in", %{conn: conn} do
@@ -84,6 +91,28 @@ defmodule PonteioWeb.TabLive.IndexTest do
       assert html =~ "excluída"
       refute has_element?(lv, "#tabs")
       assert has_element?(lv, "#tabs-empty-state")
+    end
+
+    test "a forged \"delete\" for another user's tab id is rejected with a flash error, not a crash",
+         %{conn: conn, user: user} do
+      other_user = seed_user("outro@ponteio.app")
+      their_tab = create_tab!(%{title: "Oceano", artist: "Djavan"}, other_user, :draft)
+
+      {:ok, lv, _html} = live(conn, ~p"/tabs")
+
+      # Bypasses the rendered row entirely (issue #10) — the same LiveView
+      # event a tampered client could push regardless of what its own
+      # "Excluir" link's `phx-value-id` says.
+      html = render_click(lv, "delete", %{"id" => their_tab.id})
+
+      assert html =~ "não tem permissão"
+
+      # The other user's tab is untouched.
+      assert {:ok, [remaining]} = Tablatures.list_tabs_for_user(actor: other_user)
+      assert remaining.id == their_tab.id
+
+      # And unrelated to the current user's own (empty) list.
+      assert {:ok, []} = Tablatures.list_tabs_for_user(actor: user)
     end
   end
 

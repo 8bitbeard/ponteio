@@ -1,11 +1,11 @@
 defmodule Ponteio.Tablatures.TabReadTest do
   @moduledoc """
   Covers the `:read` action of `Ponteio.Tablatures.Tab` and its policy
-  (issue #7, PRD §6.2, SDD §2.2): `list_tabs_for_user/1` (the code interface
-  the "Minhas tablaturas" screen uses) must return only the actor's own
-  tablatures, and the underlying policy must bar a direct `Ash.read` for
-  another user's tab — issue #7's stated dependency on issue #10, which is
-  not implemented yet.
+  (issue #7, PRD §6.2, SDD §2.2, formalized project-wide by issue #10
+  "Isolamento de tablaturas por usuário"): `list_tabs_for_user/1` (the code
+  interface the "Minhas tablaturas" screen uses) must return only the
+  actor's own tablatures, and the underlying policy must bar a direct
+  `Ash.read`/`Ash.get` for another user's tab.
   """
 
   use Ponteio.DataCase, async: true
@@ -68,6 +68,19 @@ defmodule Ponteio.Tablatures.TabReadTest do
                Tab
                |> Ash.Query.filter(id == ^tab.id)
                |> Ash.read_one(actor: other)
+    end
+
+    test "Ash.get/3 for another user's tab errors instead of returning it (issue #10)" do
+      owner = seed_user("dono4@ponteio.app")
+      other = seed_user("outro4@ponteio.app")
+
+      tab = create_tab!(%{title: "Wave", artist: "Tom Jobim"}, owner)
+
+      # This is the exact call `TabLive.Editor`/`TabLive.Index` make to
+      # load a tab scoped to the actor — a non-owner's id errors here
+      # (never the record itself), which is what lets those LiveViews turn
+      # it into a flash + redirect instead of exposing another user's data.
+      assert {:error, %Ash.Error.Invalid{}} = Ash.get(Tab, tab.id, actor: other)
     end
 
     test "returns no tabs without an authenticated actor" do
