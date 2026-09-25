@@ -33,10 +33,31 @@ defmodule PonteioWeb.TabLive.Editor do
   as local assigns (`@measures`) here in the LiveView, and only the future
   `upsert_measure_notes` bulk action (issue #14) will persist that tree in
   one shot when the user saves. That's also why `:new` and `:edit` both
-  start from the same single, empty "Compasso 1" — issue #12 ("Inserir
-  marcadores de compasso") is what adds the "+Adicionar compasso" affordance
-  for more than one; until then there's nothing to load from the database
-  either way (no `Measure` row is ever written by this issue).
+  start from the same single, empty "Compasso 1" — there's nothing to load
+  from the database either way (no `Measure` row is ever written by this
+  LiveView).
+
+  ## Adding/splitting compassos (issue #12)
+
+  Two ways a second (or Nth) `measure-card` comes to exist, both purely
+  local-state operations on `@measures`, per the same deferred-persistence
+  note above:
+
+    * **"+ Adicionar compasso"** appends one empty measure after the last
+      one, `position` = previous last + 1.
+    * **"Quebrar compasso aqui"** (one scissors button per column inside
+      `MeasureEditorComponent`, `break_measure` event) splits an existing
+      measure at a given column: notes at that column and after move,
+      keeping their relative order, into a brand-new measure inserted
+      right after the one being split; every measure's `position` is then
+      recomputed from its new list index (1-based) so positions stay a
+      contiguous, gap-free sequence no matter where in the middle the
+      split happened.
+
+  Each measure keeps a `id` that is stable and independent of `position`
+  (`next_measure_seq` hands out the next one) — `position` gets rewritten
+  on every split/reindex, but `id` is what `phx-value-measure` and DOM ids
+  key off of, so it must never change under an already-rendered card.
   """
 
   use PonteioWeb, :live_view
@@ -57,7 +78,11 @@ defmodule PonteioWeb.TabLive.Editor do
     {:ok,
      socket
      |> assign_for_action(socket.assigns.live_action, params)
-     |> assign(measures: [%{id: "measure-1", position: 1, notes: []}], editing: nil)}
+     |> assign(
+       measures: [%{id: "measure-1", position: 1, notes: []}],
+       editing: nil,
+       next_measure_seq: 2
+     )}
   end
 
   @impl true
@@ -99,6 +124,10 @@ defmodule PonteioWeb.TabLive.Editor do
         measure={measure}
         editing={@editing}
       />
+
+      <button type="button" class="btn btn-ghost" phx-click="add_measure">
+        + Adicionar compasso
+      </button>
     </Layouts.app>
     """
   end
@@ -128,6 +157,28 @@ defmodule PonteioWeb.TabLive.Editor do
       end
 
     {:noreply, assign(socket, measures: measures, editing: nil)}
+  end
+
+  def handle_event("add_measure", _params, socket) do
+    measures = socket.assigns.measures
+    seq = socket.assigns.next_measure_seq
+
+    new_measure = %{id: "measure-#{seq}", position: length(measures) + 1, notes: []}
+
+    {:noreply, assign(socket, measures: measures ++ [new_measure], next_measure_seq: seq + 1)}
+  end
+
+  def handle_event(
+        "break_measure",
+        %{"measure" => measure_id, "column" => column},
+        socket
+      ) do
+    column = String.to_integer(column)
+    seq = socket.assigns.next_measure_seq
+
+    {measures, seq} = split_measure(socket.assigns.measures, measure_id, column, seq)
+
+    {:noreply, assign(socket, measures: measures, next_measure_seq: seq)}
   end
 
   def handle_event("save", %{"form" => params}, socket) do
@@ -206,6 +257,50 @@ defmodule PonteioWeb.TabLive.Editor do
       measure ->
         measure
     end)
+  end
+
+  # Splits `measure_id`'s notes at `column` (issue #12, "Quebrar compasso
+  # aqui"): notes whose `position` is >= column move, in their original
+  # relative order, into a brand-new measure inserted right after the one
+  # being split, renumbered from 0 within that new measure. Notes that stay
+  # behind keep their `position` unchanged. Every measure's `position` is
+  # then recomputed from its list index so the whole tablature stays a
+  # contiguous, 1-based sequence regardless of where the split landed.
+  #
+  # An unknown `measure_id` (stale DOM event) is a no-op: the list and
+  # sequence counter come back untouched.
+  defp split_measure(measures, measure_id, column, seq) do
+    case Enum.find_index(measures, &(&1.id == measure_id)) do
+      nil ->
+        {measures, seq}
+
+      index ->
+        measure = Enum.at(measures, index)
+        {kept_notes, moved_notes} = Enum.split_with(measure.notes, &(&1.position < column))
+
+        moved_notes =
+          moved_notes
+          |> Enum.sort_by(& &1.position)
+          |> Enum.with_index()
+          |> Enum.map(fn {note, position} -> %{note | position: position} end)
+
+        updated_measure = %{measure | notes: kept_notes}
+        new_measure = %{id: "measure-#{seq}", position: 0, notes: moved_notes}
+
+        measures =
+          measures
+          |> List.replace_at(index, updated_measure)
+          |> List.insert_at(index + 1, new_measure)
+          |> reindex_measures()
+
+        {measures, seq + 1}
+    end
+  end
+
+  defp reindex_measures(measures) do
+    measures
+    |> Enum.with_index(1)
+    |> Enum.map(fn {measure, position} -> %{measure | position: position} end)
   end
 
   defp heading(:new), do: "Nova tablatura"
