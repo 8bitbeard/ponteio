@@ -38,6 +38,7 @@ defmodule Ponteio.Tablatures.TabUpsertMeasureNotesTest do
     |> Ash.Query.sort(position: :asc)
     |> Ash.Query.load(:notes)
     |> Ash.read!(actor: actor)
+    |> Enum.map(fn measure -> %{measure | notes: Enum.sort_by(measure.notes, & &1.position)} end)
   end
 
   describe "upsert_measure_notes" do
