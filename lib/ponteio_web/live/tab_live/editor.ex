@@ -27,15 +27,31 @@ defmodule PonteioWeb.TabLive.Editor do
 
   Below the metadata form, the editor renders a grid of compassos (see
   `PonteioWeb.TabLive.MeasureEditorComponent`) for entering notes as
-  corda/casa pairs. As explained in issue #11/#12/#14's "Persistência"
+  corda/casa pairs. As explained in issue #11/#12/#13's "Persistência"
   notes, this grid does **not** round-trip to `Ponteio.Tablatures.Measure`/
   `Note` on every note typed — it keeps the whole editor's compassos/notas
-  as local assigns (`@measures`) here in the LiveView, and only the future
-  `upsert_measure_notes` bulk action (issue #14) will persist that tree in
-  one shot when the user saves. That's also why `:new` and `:edit` both
-  start from the same single, empty "Compasso 1" — there's nothing to load
-  from the database either way (no `Measure` row is ever written by this
-  LiveView).
+  as local assigns (`@measures`) here in the LiveView, and only
+  `save_measure_notes/2`'s call to `upsert_measure_notes` (issue #14, below)
+  persists that tree in one shot, on `phx-submit`. That's also why `:new`
+  and `:edit` both start from the same single, empty "Compasso 1" — there's
+  nothing to load from the database either way yet (loading an existing
+  tab's persisted `Measure`/`Note` rows back into `@measures` for `:edit`
+  is out of this issue's scope — see "Saving (issue #14)" below).
+
+  ## Saving (issue #14)
+
+  `phx-submit`'s `save` handler first submits the metadata form (title,
+  artist, capo position) via `AshPhoenix.Form`, as before issue #14; once
+  that succeeds, `save_measure_notes/2` calls
+  `Ponteio.Tablatures.upsert_measure_notes/3` with the freshly saved/updated
+  `tab` and `@measures` as-is (its per-measure `:id` key, a purely local
+  editor/DOM handle, is simply ignored by that action — see its own
+  description) — never on `phx-change`/per keystroke, satisfying the PRD
+  §6.4 regra 6 requirement that recalculation only happens on save, not on
+  every edit. That action also marks `tab.status = :draft`, which is what
+  issue #20's (not yet implemented) AshOban trigger will watch for to
+  enqueue automatic chord-suggestion reanalysis — this issue's job stops at
+  setting that status; it does not itself trigger any analysis.
 
   ## Adding/splitting compassos (issue #12)
 
@@ -109,6 +125,9 @@ defmodule PonteioWeb.TabLive.Editor do
 
   on_mount {PonteioWeb.LiveUserAuth, :live_user_required}
 
+  require Ash.Query
+
+  alias Ponteio.Tablatures.Measure
   alias Ponteio.Tablatures.Tab
   alias PonteioWeb.TabLive.MeasureEditorComponent
 
@@ -120,14 +139,12 @@ defmodule PonteioWeb.TabLive.Editor do
 
   @impl true
   def mount(params, _session, socket) do
-    {:ok,
-     socket
-     |> assign_for_action(socket.assigns.live_action, params)
-     |> assign(
-       measures: [%{id: "measure-1", position: 1, notes: []}],
-       editing: nil,
-       next_measure_seq: 2
-     )}
+    socket = assign_for_action(socket, socket.assigns.live_action, params)
+
+    {measures, next_measure_seq} =
+      initial_measures(socket.assigns[:tab], socket.assigns.current_user)
+
+    {:ok, assign(socket, measures: measures, editing: nil, next_measure_seq: next_measure_seq)}
   end
 
   @impl true
@@ -281,6 +298,7 @@ defmodule PonteioWeb.TabLive.Editor do
         {:noreply,
          socket
          |> put_flash(:info, save_flash(socket.assigns.live_action, tab))
+         |> save_measure_notes(tab)
          |> redirect(to: ~p"/tabs")}
 
       {:error, form} ->
@@ -291,7 +309,7 @@ defmodule PonteioWeb.TabLive.Editor do
   defp assign_for_action(socket, :new, _params) do
     form = build_create_form(socket.assigns.current_user)
 
-    assign(socket, form: form, page_title: "Nova tablatura")
+    assign(socket, form: form, page_title: "Nova tablatura", tab: nil)
   end
 
   defp assign_for_action(socket, :edit, %{"id" => id}) do
@@ -301,7 +319,7 @@ defmodule PonteioWeb.TabLive.Editor do
       {:ok, tab} ->
         form = build_update_form(tab, user)
 
-        assign(socket, form: form, page_title: "Editar tablatura")
+        assign(socket, form: form, page_title: "Editar tablatura", tab: tab)
 
       {:error, _error} ->
         socket
@@ -320,6 +338,60 @@ defmodule PonteioWeb.TabLive.Editor do
     tab
     |> AshPhoenix.Form.for_update(:update, actor: user, domain: Ponteio.Tablatures)
     |> to_form()
+  end
+
+  # Seeds `@measures` on mount. For `:new` (`tab: nil`) there is nothing to
+  # load — same single, empty "Compasso 1" as before issue #14. For
+  # `:edit`, this reads back whatever `upsert_measure_notes` (issue #14)
+  # already persisted for this tab, converting each `Measure`/`Note` row
+  # into the editor's local-assign shape (a fresh sequential `id` per
+  # measure — `Measure`'s own uuid is irrelevant here, `id` is purely a
+  # local editor/DOM handle, same as a brand-new measure's).
+  #
+  # This is the necessary counterpart of `save_measure_notes/2`: now that
+  # saving actually writes `Measure`/`Note` rows (issue #14), *not* loading
+  # them back here would mean re-opening "Editar tablatura" and saving
+  # again — even just to fix the title, touching no note — would silently
+  # replace the tab's real compasso/nota tree with a single empty
+  # "Compasso 1" the next `upsert_measure_notes` call, since that action
+  # always replaces the whole tree with whatever `@measures` currently
+  # holds (its own moduledoc's documented "editor always submits the
+  # complete picture, never a diff" contract). A tab with no persisted
+  # measures yet (freshly created, notes never saved) falls back to the
+  # same empty "Compasso 1" as `:new`.
+  defp initial_measures(nil, _user), do: {[%{id: "measure-1", position: 1, notes: []}], 2}
+
+  defp initial_measures(%Tab{} = tab, user) do
+    Measure
+    |> Ash.Query.filter(tab_id == ^tab.id)
+    |> Ash.Query.sort(position: :asc)
+    |> Ash.Query.load(:notes)
+    |> Ash.read!(actor: user)
+    |> case do
+      [] ->
+        {[%{id: "measure-1", position: 1, notes: []}], 2}
+
+      measures ->
+        editor_measures =
+          measures
+          |> Enum.with_index(1)
+          |> Enum.map(fn {measure, index} ->
+            notes =
+              measure.notes
+              |> Enum.sort_by(& &1.position)
+              |> Enum.map(
+                &%{
+                  string_number: &1.string_number,
+                  fret_number: &1.fret_number,
+                  position: &1.position
+                }
+              )
+
+            %{id: "measure-#{index}", position: index, notes: notes}
+          end)
+
+        {editor_measures, length(editor_measures) + 1}
+    end
   end
 
   # Only a non-negative integer, with nothing left over, confirms a note
@@ -523,4 +595,36 @@ defmodule PonteioWeb.TabLive.Editor do
 
   defp save_flash(:new, tab), do: "Tablatura \"#{tab.title}\" criada."
   defp save_flash(:edit, tab), do: "Tablatura \"#{tab.title}\" atualizada."
+
+  # Persists the editor's whole compasso/nota tree (issue #14, PRD §6.4
+  # regra 6; SDD §3.4, §5) right after the metadata form itself saves
+  # successfully above — once per `phx-submit`, never per keystroke, since
+  # `@measures` only ever changes locally (issues #11-#13) until this
+  # single call. Runs for both `:new` and `:edit`: a brand-new tab has no
+  # existing `Measure` rows to replace, so the action's "destroy then
+  # recreate" rule (see its own description) degenerates to a plain bulk
+  # insert in that case.
+  #
+  # A failure here (a policy violation, a malformed note) doesn't roll
+  # back the metadata that already saved — Tab's own `:create`/`:update`
+  # already committed in its own transaction by this point — so it's
+  # surfaced as a distinct flash instead of silently discarding the
+  # editor's notes, rather than raising and crashing the LiveView.
+  defp save_measure_notes(socket, tab) do
+    case Ponteio.Tablatures.upsert_measure_notes(
+           tab,
+           socket.assigns.measures,
+           actor: socket.assigns.current_user
+         ) do
+      {:ok, _tab} ->
+        socket
+
+      {:error, _error} ->
+        put_flash(
+          socket,
+          :error,
+          "Tablatura salva, mas houve um problema ao salvar as notas do editor."
+        )
+    end
+  end
 end
