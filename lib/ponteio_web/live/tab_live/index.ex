@@ -8,13 +8,10 @@ defmodule PonteioWeb.TabLive.Index do
   a manual filter here.
 
   The row's "Editar" shortcut uses `~p"/tabs/\#{tab.id}/edit"` now that
-  issue #8 ("Editar metadados") added that route. "Estudar" is still a
-  plain path (not the `~p` sigil): `/tabs/:id/study` doesn't exist yet —
-  it lands with issue #22 ("Visualizar tablatura completa"). `~p` is
-  compile-time verified against the router, so using it here for a route
-  that doesn't exist yet would fail to compile; a plain path keeps the
-  shortcut visible now (matching the mockup, Tela 1) and starts working
-  the moment that issue adds its route.
+  issue #8 ("Editar metadados") added that route. "Estudar" now does the
+  same with `~p"/tabs/\#{tab.id}/study"`, since issue #22 ("Visualizar
+  tablatura completa") added that route — `~p` is compile-time verified
+  against the router, so this only compiles now that the route exists.
 
   "Excluir" (issue #9, PRD §6.2) requires confirmation via the browser's
   native `data-confirm` prompt (an explicit acceptance criterion) before it
@@ -96,7 +93,7 @@ defmodule PonteioWeb.TabLive.Index do
           </span>
         </:col>
         <:action :let={tab}>
-          <.link :if={tab.status == :ready} navigate={"/tabs/#{tab.id}/study"} class="link">
+          <.link :if={tab.status == :ready} navigate={~p"/tabs/#{tab.id}/study"} class="link">
             Estudar
           </.link>
           <.link navigate={~p"/tabs/#{tab.id}/edit"} class="link">Editar</.link>

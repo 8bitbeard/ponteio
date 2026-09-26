@@ -49,6 +49,11 @@ defmodule PonteioWeb.Router do
       # module as `/tabs/new`, `live_action: :edit`.
       live "/tabs/:id/edit", TabLive.Editor, :edit
 
+      # Study mode (issue #22, SDD §7) — read-only, full tablature with
+      # chord suggestions overlaid; `TabLive.Index`'s "Estudar" shortcut
+      # (issue #7) has pointed here since before this route existed.
+      live "/tabs/:id/study", TabLive.Study, :show
+
       # Authenticated password change (issue #4, third acceptance criterion) —
       # same `on_mount` guard as above, declared inside the LiveView itself.
       live "/account/password", UserLive.ChangePassword, :edit

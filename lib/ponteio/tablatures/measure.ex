@@ -18,6 +18,13 @@ defmodule Ponteio.Tablatures.Measure do
   actions and policy below exist so the resource is usable (and testable
   in isolation, and ready for #14 to call), not because anything calls
   them yet.
+
+  `has_many :chord_segments` (issue #22, "Visualizar tablatura completa
+  com acordes sobrepostos") is the reverse side of `ChordSegment.belongs_to
+  :measure` (issue #20) — added only once `TabLive.Study` needed to
+  traverse `tab -> measures -> chord_segments -> chord_suggestions` in a
+  single `Ash.load!/3` call (SDD §4); nothing before it ever loaded a
+  `Measure`'s segments this way.
   """
 
   use Ash.Resource,
@@ -89,5 +96,13 @@ defmodule Ponteio.Tablatures.Measure do
     end
 
     has_many :notes, Ponteio.Tablatures.Note
+
+    # The reverse side of `ChordSegment.belongs_to :measure` (issue #20).
+    # Nothing needed to traverse this direction until issue #22 ("Visualizar
+    # tablatura completa com acordes sobrepostos"), which loads a tab's
+    # whole `measures -> chord_segments -> chord_suggestions` tree in one
+    # `Ash.load!/3` call (SDD §4) — that traversal is only possible with
+    # this relationship declared here.
+    has_many :chord_segments, Ponteio.Tablatures.ChordSegment
   end
 end
