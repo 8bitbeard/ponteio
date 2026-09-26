@@ -33,6 +33,37 @@ defmodule PonteioWeb.TabLive.Study do
   and every already-computed chip at once (this issue's third acceptance
   criterion); there is nothing left to fetch on scroll or on demand.
 
+  ## Live updates while analysis is running (issue #24)
+
+  `mount/3` subscribes to `"tab:\#{tab.id}"` — the same topic
+  `Ponteio.Tablatures.Changes.RunChordAnalysis` broadcasts on (issue #20) —
+  once the socket is `connected?/1` (skipping the topic-less static render
+  during dead-render/live-navigation, same guard every other subscribing
+  LiveView in this codebase would use, avoiding a duplicate subscription
+  from the disconnected mount that immediately gets thrown away).
+
+  Two messages arrive on that topic, both handled without ever
+  `redirect`/`push_navigate`-ing the socket (this issue's explicit "sem
+  reload de página" requirement):
+
+  - `:analyzing` — flips the local `@tab.status` assign to `:analyzing`
+    (no DB round-trip needed: the broadcast itself is the signal, and the
+    struct held in the assign is the only place that status is displayed).
+    The template shows a visible "Analisando acordes..." banner whenever
+    `@tab.status == :analyzing`, covering both this live transition and
+    the (rarer) case of landing on this page while a background run is
+    already in flight.
+  - `{:analysis_completed, tab_id}` — re-fetches the `Tab` itself via
+    `Ash.get!/3` (picking up the fresh `status: :ready` the action's own
+    final commit wrote, which a plain `Ash.load!/3` of relationships alone
+    would not refresh) and reloads the whole compasso/nota/acorde tree
+    through the same `load_study_tree!/2` `mount/3` already uses — the new
+    `ChordSegment`/`ChordSuggestion` rows `RunChordAnalysis` just committed
+    (guaranteed already-committed by the time this message is delivered,
+    since it broadcasts from `after_transaction/2`, per that module's own
+    moduledoc) replace the stale tree in one `assign/3`, which LiveView
+    then re-renders in place.
+
   ## What this issue deliberately does not do
 
   - **Choosing between ambiguous candidates** (issue #21's "N de M
@@ -40,17 +71,6 @@ defmodule PonteioWeb.TabLive.Study do
     shows that count as a static label, never a `<select>`/`phx-click`,
     since picking a candidate is not among this issue's stated acceptance
     criteria (only *displaying* the suggested/no-match regions is).
-  - **Live updates while analysis is running** (subscribing to
-    `"tab:\#{tab_id}"`, reacting to `:analyzing`/`{:analysis_completed,
-    tab_id}`) is issue #24's scope (SDD §4 describes the eventual
-    behavior, but `Ponteio.Tablatures.Changes.RunChordAnalysis`'s own
-    moduledoc explicitly attributes the reloading subscriber to "issue
-    #24, not yet implemented") — this LiveView loads the tree once, on
-    mount, and does not react to broadcasts. Visiting a tab that is still
-    `:draft`/`:analyzing` (nothing stops that at the router level; only
-    `TabLive.Index`'s own "Estudar" shortcut hides itself for a non-ready
-    tab) simply renders whatever `chord_segments` already exist for it —
-    typically none yet — without erroring.
   """
 
   use PonteioWeb, :live_view
@@ -78,6 +98,10 @@ defmodule PonteioWeb.TabLive.Study do
 
     case Ash.get(Tab, id, actor: user, domain: Ponteio.Tablatures) do
       {:ok, tab} ->
+        if connected?(socket) do
+          Phoenix.PubSub.subscribe(Ponteio.PubSub, "tab:#{tab.id}")
+        end
+
         tab = load_study_tree!(tab, user)
 
         {:ok, assign(socket, tab: tab, page_title: "Estudo: #{tab.title}")}
@@ -88,6 +112,33 @@ defmodule PonteioWeb.TabLive.Study do
          |> put_flash(:error, @not_accessible_flash)
          |> redirect(to: ~p"/tabs")}
     end
+  end
+
+  # `RunChordAnalysis`'s first broadcast (issue #20) — the independently
+  # committed `status: :analyzing` write, sent right after it happens.
+  # Flipping the assign locally (rather than re-fetching) is enough: the
+  # broadcast itself is the up-to-date signal, and `@tab.status` is the
+  # only thing the "Analisando..." banner below reads.
+  @impl true
+  def handle_info(:analyzing, socket) do
+    {:noreply, update(socket, :tab, &%{&1 | status: :analyzing})}
+  end
+
+  # `RunChordAnalysis`'s second broadcast — sent from `after_transaction/2`
+  # once the whole action (status flip to `:ready` plus every
+  # `ChordSegment`/`ChordSuggestion` it persisted) has actually committed
+  # (see that module's moduledoc), so it's always safe to reload here.
+  # Re-fetches the `Tab` itself first (picking up the fresh `status`, which
+  # `load_study_tree!/2` alone — a relationships-only `Ash.load!/3` — would
+  # never refresh), then reloads the whole tree through the same helper
+  # `mount/3` uses, replacing the stale assign in place. Never navigates.
+  @impl true
+  def handle_info({:analysis_completed, tab_id}, socket) do
+    user = socket.assigns.current_user
+    tab = Ash.get!(Tab, tab_id, actor: user, domain: Ponteio.Tablatures)
+    tab = load_study_tree!(tab, user)
+
+    {:noreply, assign(socket, :tab, tab)}
   end
 
   @impl true
@@ -106,6 +157,13 @@ defmodule PonteioWeb.TabLive.Study do
           </span>
           <.link navigate={~p"/tabs"} class="btn btn-ghost">Voltar</.link>
         </div>
+      </div>
+
+      <div :if={@tab.status == :analyzing} id="analyzing-banner" class="alert alert-warning mb-4">
+        <span class="loading loading-spinner loading-sm"></span>
+        <span>
+          Analisando acordes... As sugestões serão atualizadas automaticamente ao terminar.
+        </span>
       </div>
 
       <StudyMeasureComponent.study_measure
