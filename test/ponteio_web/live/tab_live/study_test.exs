@@ -125,11 +125,12 @@ defmodule PonteioWeb.TabLive.StudyTest do
       assert html =~ "Compasso 1"
 
       # The :suggested segment's chip: root note name reflects the tab's
-      # own capo_fret (string 1, standard-tuning index 4, base_fret 0,
-      # capo_fret 2 -> (4 + 0 + 2) mod 12 = 6 -> "Fá#",
-      # `Ponteio.Chords.root_note_name/3`'s own arithmetic), composed with
-      # the seeded shape's "Maior" quality label.
-      assert html =~ "Fá# Maior"
+      # own capo_fret (string 1, standard-tuning index 4, the seeded
+      # shape's own relative_frets offset there is 3 (`seed_chord_shape!`
+      # below), base_fret 0, capo_fret 2 -> (4 + 3 + 0 + 2) mod 12 = 9 ->
+      # "Lá", `Ponteio.Chords.root_note_name/3`'s own arithmetic), composed
+      # with the seeded shape's "Maior" quality label.
+      assert html =~ "Lá Maior"
       assert html =~ "1 de 1 sugestões"
 
       # The :no_match segment renders its own "sem sugestão" chip, visible
