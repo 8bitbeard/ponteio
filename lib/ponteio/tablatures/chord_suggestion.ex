@@ -13,11 +13,10 @@ defmodule Ponteio.Tablatures.ChordSuggestion do
   `candidates_for_window/2` returned an empty list).
 
   `ChordSegment.selected_suggestion_id` (issue #21, "Usuário escolhe entre
-  sugestões de acorde ambíguas" — not yet implemented) will eventually
-  point back at one of a segment's own suggestions, once that issue adds
-  the `select_chord_suggestion` action; this resource doesn't need
-  anything extra to support that, since the relationship already lives on
-  `ChordSegment`'s side (SDD §2.2).
+  sugestões de acorde ambíguas") points back at one of a segment's own
+  suggestions, set via `ChordSegment`'s `:select_chord_suggestion` action;
+  this resource needed nothing extra to support that, since the
+  relationship already lives on `ChordSegment`'s side (SDD §2.2).
   """
 
   use Ash.Resource,

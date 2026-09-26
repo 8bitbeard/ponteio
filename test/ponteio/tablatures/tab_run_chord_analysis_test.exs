@@ -4,7 +4,11 @@ defmodule Ponteio.Tablatures.TabRunChordAnalysisTest do
   `:run_chord_analysis` action it fires (issue #20, "Disparo assíncrono da
   análise de acordes com status visível"; PRD §6.4 regra 6, §8; SDD §3.4)
   — the workflow issue #14's `TabUpsertMeasureNotesTest` moduledoc
-  explicitly deferred to this PR.
+  explicitly deferred to this PR — plus, in the last `describe` block, the
+  re-run selection-preservation logic issue #21 ("Usuário escolhe entre
+  sugestões de acorde ambíguas") added to that same action. See
+  `Ponteio.Tablatures.ChordSegmentSelectChordSuggestionTest` for
+  `:select_chord_suggestion` itself.
 
   Uses `AshOban.Test.schedule_and_run_triggers/2` (config/test.exs sets
   `config :ponteio, Oban, testing: :manual`) to schedule and drain the
@@ -19,6 +23,7 @@ defmodule Ponteio.Tablatures.TabRunChordAnalysisTest do
 
   alias Ponteio.Accounts.User
   alias Ponteio.Chords.ChordShape
+  alias Ponteio.Tablatures
   alias Ponteio.Tablatures.ChordSegment
   alias Ponteio.Tablatures.Measure
   alias Ponteio.Tablatures.Note
@@ -181,6 +186,106 @@ defmodule Ponteio.Tablatures.TabRunChordAnalysisTest do
       assert_received :analyzing
       tab_id = tab.id
       assert_received {:analysis_completed, ^tab_id}
+    end
+  end
+
+  describe "selection preservation across re-runs (issue #21)" do
+    test "preserves the user's chosen candidate when the next run's segment is equivalent" do
+      owner = seed_user("preserva-escolha@ponteio.app")
+      # Two shapes that both match the very same lone note (string 1, fret
+      # 2) at base_fret 0 — a genuinely ambiguous segment (PRD §6.4 regra 3).
+      seed_chord_shape!("shape-preserva-a", 1, 2)
+      seed_chord_shape!("shape-preserva-b", 1, 2)
+
+      tab = create_tab!(%{title: "Chega de Saudade", artist: "Tom Jobim"}, owner)
+
+      measure =
+        Measure
+        |> Ash.Changeset.for_create(:create, %{tab_id: tab.id, position: 1}, authorize?: false)
+        |> Ash.create!()
+
+      Note
+      |> Ash.Changeset.for_create(
+        :create,
+        %{measure_id: measure.id, string_number: 1, fret_number: 2, position: 0},
+        authorize?: false
+      )
+      |> Ash.create!()
+
+      assert %{success: 2} = run_trigger!()
+
+      assert [segment] = chord_segments_of(measure)
+      assert length(segment.chord_suggestions) == 2
+
+      chosen = Enum.find(segment.chord_suggestions, &(&1.rank == 2))
+      assert {:ok, _} = Tablatures.select_chord_suggestion(segment, chosen, actor: owner)
+
+      # Re-run with the same notes untouched — the next segmentation is
+      # equivalent (same measure_id + start_position/end_position).
+      Ash.Seed.update!(Ash.get!(Tab, tab.id, authorize?: false), %{status: :draft})
+      assert %{success: 2} = run_trigger!()
+
+      assert [new_segment] = chord_segments_of(measure)
+      # A fresh row (RunChordAnalysis always deletes-then-recreates), but
+      # carrying the same *choice* forward.
+      assert new_segment.id != segment.id
+      assert new_segment.selected_suggestion_id != nil
+
+      new_selected =
+        Enum.find(new_segment.chord_suggestions, &(&1.id == new_segment.selected_suggestion_id))
+
+      assert new_selected.chord_shape_id == chosen.chord_shape_id
+      assert new_selected.base_fret == chosen.base_fret
+    end
+
+    test "discards the user's chosen candidate when the next run's segmentation changes" do
+      owner = seed_user("descarta-escolha@ponteio.app")
+      seed_chord_shape!("shape-descarta-a", 1, 2)
+      seed_chord_shape!("shape-descarta-b", 1, 2)
+
+      tab = create_tab!(%{title: "Corcovado", artist: "Tom Jobim"}, owner)
+
+      measure =
+        Measure
+        |> Ash.Changeset.for_create(:create, %{tab_id: tab.id, position: 1}, authorize?: false)
+        |> Ash.create!()
+
+      note =
+        Note
+        |> Ash.Changeset.for_create(
+          :create,
+          %{measure_id: measure.id, string_number: 1, fret_number: 2, position: 0},
+          authorize?: false
+        )
+        |> Ash.create!()
+
+      assert %{success: 2} = run_trigger!()
+
+      assert [segment] = chord_segments_of(measure)
+      chosen = Enum.find(segment.chord_suggestions, &(&1.rank == 2))
+      assert {:ok, _} = Tablatures.select_chord_suggestion(segment, chosen, actor: owner)
+
+      # Move the note to a different position — the next run's segment no
+      # longer shares the same start_position/end_position pair, so it is
+      # not "equivalent" per this issue's own rule.
+      Ash.destroy!(note, authorize?: false)
+
+      Note
+      |> Ash.Changeset.for_create(
+        :create,
+        %{measure_id: measure.id, string_number: 1, fret_number: 2, position: 1},
+        authorize?: false
+      )
+      |> Ash.create!()
+
+      Ash.Seed.update!(Ash.get!(Tab, tab.id, authorize?: false), %{status: :draft})
+      assert %{success: 2} = run_trigger!()
+
+      assert [new_segment] = chord_segments_of(measure)
+      assert new_segment.start_position == 1
+      # Unselected — the UI falls back to displaying rank 1 (this issue's
+      # documented default).
+      assert new_segment.selected_suggestion_id == nil
     end
   end
 end
