@@ -121,7 +121,11 @@ defmodule PonteioWeb.TabLive.StudyTest do
       assert html =~ "Águas de Março"
       assert html =~ "Tom Jobim"
       assert html =~ "Capo na 2ª casa"
-      assert has_element?(lv, "#study-measure-#{measure.id}")
+      # `TabLive.Study` renders one row-set per responsive breakpoint (its
+      # own "Responsive row width, no horizontal scroll"), each with its
+      # own `variant`-prefixed id — an ends-with selector matches
+      # regardless of which breakpoint's copy it lands on.
+      assert has_element?(lv, "[id$='-#{measure.id}']")
       assert html =~ "Compasso 1"
 
       # The :suggested segment's chip: root note name reflects the tab's
@@ -129,9 +133,14 @@ defmodule PonteioWeb.TabLive.StudyTest do
       # shape's own relative_frets offset there is 3 (`seed_chord_shape!`
       # below), base_fret 0, capo_fret 2 -> (4 + 3 + 0 + 2) mod 12 = 9 ->
       # "Lá", `Ponteio.Chords.root_note_name/3`'s own arithmetic), composed
-      # with the seeded shape's "Maior" quality label.
+      # with the seeded shape's "Maior" quality label. This segment shares
+      # its (padded) measure with the `:no_match` one below and doesn't
+      # reach the measure's own last note, so it renders the compact,
+      # name-only chip (`StudyMeasureComponent`'s own moduledoc "Which
+      # notes share a hand position") — no diagram, no rank line, both of
+      # which the *single-segment* measure in this module's live-update
+      # test below still covers.
       assert html =~ "Lá Maior"
-      assert html =~ "1 de 1 sugestões"
 
       # The :no_match segment renders its own "sem sugestão" chip, visible
       # simultaneously with the suggested one above — no extra click/
@@ -169,8 +178,8 @@ defmodule PonteioWeb.TabLive.StudyTest do
 
       {:ok, lv, _html} = live(conn, ~p"/tabs/#{tab.id}/study")
 
-      assert has_element?(lv, "#study-measure-#{measure_1.id}")
-      assert has_element?(lv, "#study-measure-#{measure_2.id}")
+      assert has_element?(lv, "[id$='-#{measure_1.id}']")
+      assert has_element?(lv, "[id$='-#{measure_2.id}']")
     end
   end
 
