@@ -16,10 +16,11 @@
 # storage order (string 1 = high e .. string 6 = low E) before insertion.
 # `nil` means the string is muted / not part of the shape.
 
-alias Ponteio.Chords.ChordShape
-
 defmodule Ponteio.ChordShapeSeeds do
   @moduledoc false
+
+  alias Ponteio.Chords.ChordShape
+  alias Ponteio.Chords.ImportedCatalog
 
   # Reverses a low-to-high (E A D G B e) fret list into the resource's
   # storage order (string 1 = high e .. string 6 = low E).
@@ -236,14 +237,39 @@ defmodule Ponteio.ChordShapeSeeds do
       |> Map.delete(:low_to_high_frets)
     end)
   end
+
+  def run do
+    legacy_shapes = all()
+
+    # The original slugs remain authoritative. A legacy movable shape covers
+    # all its allowed base frets, so compare actual sounding positions, not
+    # just its stored relative offsets, before adding a chords-db position.
+    legacy_positions =
+      legacy_shapes
+      |> Enum.flat_map(fn shape ->
+        Enum.map(shape.min_base_fret..shape.max_base_fret, &ImportedCatalog.position(shape, &1))
+      end)
+      |> MapSet.new()
+
+    imported_shapes =
+      ImportedCatalog.all()
+      |> Enum.reject(fn shape ->
+        MapSet.member?(legacy_positions, ImportedCatalog.position(shape, shape.min_base_fret))
+      end)
+
+    shapes = legacy_shapes ++ imported_shapes
+
+    Enum.each(shapes, fn attrs ->
+      ChordShape
+      |> Ash.Changeset.for_create(:create, attrs)
+      |> Ash.create!()
+    end)
+
+    IO.puts(
+      "Seeded #{length(legacy_shapes)} original and #{length(imported_shapes)} chords-db shapes " <>
+        "(#{Ash.count!(ChordShape)} total in catalog)."
+    )
+  end
 end
 
-shapes = Ponteio.ChordShapeSeeds.all()
-
-Enum.each(shapes, fn attrs ->
-  ChordShape
-  |> Ash.Changeset.for_create(:create, attrs)
-  |> Ash.create!()
-end)
-
-IO.puts("Seeded #{length(shapes)} chord shapes (#{Ash.count!(ChordShape)} total in catalog).")
+Ponteio.ChordShapeSeeds.run()
