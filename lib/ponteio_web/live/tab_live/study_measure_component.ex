@@ -44,8 +44,10 @@ defmodule PonteioWeb.TabLive.StudyMeasureComponent do
   is issue #21's own UI half, not yet built anywhere in the codebase, and
   is not among this issue's acceptance criteria (which only call for
   *displaying* the suggested/no-match regions, not for choosing between
-  them). The chord diagram (`ChordDiagramComponent`) the mockup also shows
-  inside the chip is explicitly issue #23's scope, not this one's.
+  them). The chord diagram itself (`ChordDiagramComponent.chord_diagram/1`,
+  the little braço-do-violão drawing the mockup shows inside the chip) is
+  issue #23's addition, rendered here from the same `suggestion` already
+  resolved for the chip's name/rank label.
 
   A `:no_match` segment's bracket shows a plain "sem sugestão" label
   instead (PRD §6.4 regra 4), dashed rather than solid to distinguish it
@@ -55,6 +57,7 @@ defmodule PonteioWeb.TabLive.StudyMeasureComponent do
   use PonteioWeb, :html
 
   alias Ponteio.Chords
+  alias PonteioWeb.TabLive.ChordDiagramComponent
 
   @strings 1..6
   @string_labels %{1 => "e", 2 => "B", 3 => "G", 4 => "D", 5 => "A", 6 => "E"}
@@ -161,12 +164,21 @@ defmodule PonteioWeb.TabLive.StudyMeasureComponent do
     ~H"""
     <div
       :if={@suggestion}
-      class="chord-chip flex flex-col bg-base-200 border border-base-300 rounded px-2 py-1 leading-tight"
+      class="chord-chip flex items-center gap-2 bg-base-200 border border-base-300 rounded px-2 py-1 leading-tight"
     >
-      <span class="font-semibold text-sm">{chord_name(@suggestion, @capo_fret)}</span>
-      <span class="text-[11px] text-base-content/60">
-        {@suggestion.rank} de {length(@segment.chord_suggestions)} sugestões
-      </span>
+      <ChordDiagramComponent.chord_diagram
+        id={"chord-diagram-#{@segment.id}"}
+        chord_shape={@suggestion.chord_shape}
+        base_fret={@suggestion.base_fret}
+        class="text-base-content/80 shrink-0"
+      />
+
+      <div class="flex flex-col">
+        <span class="font-semibold text-sm">{chord_name(@suggestion, @capo_fret)}</span>
+        <span class="text-[11px] text-base-content/60">
+          {@suggestion.rank} de {length(@segment.chord_suggestions)} sugestões
+        </span>
+      </div>
     </div>
     """
   end

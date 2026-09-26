@@ -35,10 +35,6 @@ defmodule PonteioWeb.TabLive.Study do
 
   ## What this issue deliberately does not do
 
-  - **The chord diagram** (`ChordDiagramComponent`, the little braço-do-violão
-    drawing the mockup shows inside each chip) is issue #23's scope, not
-    this one's — `StudyMeasureComponent`'s chip shows only the chord's
-    display name.
   - **Choosing between ambiguous candidates** (issue #21's "N de M
     sugestões ▾" dropdown) is not wired here either: `StudyMeasureComponent`
     shows that count as a static label, never a `<select>`/`phx-click`,
