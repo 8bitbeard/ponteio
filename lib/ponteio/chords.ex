@@ -12,9 +12,13 @@ defmodule Ponteio.Chords do
   operation, the segmentation built on top of it, and the ranking of a
   segment's candidates by hand-movement cost, respectively, all of which
   the whole suggestion engine (the `:run_chord_analysis` action, issue
-  #20) relies on. These are plain Elixir functions, not Ash actions: they
-  take/return plain data and have no policies, so they can be unit-tested
-  without a database, Ash, or LiveView.
+  #20) relies on — plus `root_note_name/3` (issue #19, "Considerar
+  capotraste na análise de acordes"; PRD §6.4 regra 5; SDD §2.3), the only
+  place in the whole engine that does capo arithmetic (see that
+  function's own doc for why the rest of the pipeline doesn't need to).
+  These are plain Elixir functions, not Ash actions: they take/return
+  plain data and have no policies, so they can be unit-tested without a
+  database, Ash, or LiveView.
   """
 
   use Ash.Domain,
@@ -25,6 +29,16 @@ defmodule Ponteio.Chords do
       define :list_chord_shapes, action: :read
     end
   end
+
+  # Standard tuning (E A D G B E, SDD §2.3 — a compile-time constant, not a
+  # resource), as each open string's chromatic index (Dó = 0 .. Si = 11),
+  # keyed by `Ponteio.Chords.ChordShape.root_string`'s 1 (high E) .. 6 (low
+  # E) convention.
+  @standard_tuning %{1 => 4, 2 => 11, 3 => 7, 4 => 2, 5 => 9, 6 => 4}
+
+  # The twelve Portuguese chromatic note names, sharps only, index 0 (Dó)
+  # through 11 (Si) — matches `@standard_tuning`'s indices.
+  @note_names ~w(Dó Dó# Ré Ré# Mi Fá Fá# Sol Sol# Lá Lá# Si)
 
   @typedoc """
   A note within the window being analyzed: which string (1 = high E ..
@@ -278,5 +292,52 @@ defmodule Ponteio.Chords do
     |> Enum.take(3)
     |> Enum.with_index(1)
     |> Enum.map(fn {candidate, rank} -> Map.put(candidate, :rank, rank) end)
+  end
+
+  @doc """
+  Names the fundamental/root note actually sounding on the real neck for
+  a `chord_shape` applied at `base_fret`, given the tab's current
+  `capo_fret` (issue #19, "Considerar capotraste na análise de acordes";
+  PRD §6.4 regra 5; SDD §2.3):
+
+      nota = afinação_padrão[chord_shape.root_string] + base_fret + capo_fret  (mod 12)
+
+  `chord_shape.root_string` picks which of the six standard-tuned open
+  strings (`E A D G B E`, a compile-time constant per SDD §2.3, not a
+  resource) carries the chord's root; `base_fret` is the neck position
+  the shape was matched at (`candidate/0`'s own field); `capo_fret` is
+  the owning `Ponteio.Tablatures.Tab.capo_fret` at analysis time.
+
+  This is the **only** place in the whole engine that does capo
+  arithmetic: `Note.fret_number` is already capo-relative by the time it
+  reaches `candidates_for_window/2`/`segment_measure/2` (issue #11), so
+  neither of those (nor `rank_candidates/2`) needs `capo_fret` at all —
+  matching and ranking happen entirely in capo-relative terms. Naming the
+  note the listener actually hears, though, requires translating that
+  relative `base_fret` back onto the real neck, which is exactly what
+  adding `capo_fret` here does (a capo raises every open string's pitch
+  by its own fret count, so the true sounding position is `base_fret`
+  frets *above the capo*, i.e. `base_fret + capo_fret` frets above the
+  string's unclamped open pitch).
+
+  Returns one of the twelve Portuguese chromatic note names (`"Dó"`,
+  `"Dó#"`, `"Ré"`, `"Ré#"`, `"Mi"`, `"Fá"`, `"Fá#"`, `"Sol"`, `"Sol#"`,
+  `"Lá"`, `"Lá#"`, `"Si"`), sharps only (no enharmonic flat spellings) —
+  just the bare fundamental note (e.g. `"Sol"`), not the full chord name
+  (e.g. not "Sol Maior"): composing this with `chord_shape.name`/
+  `quality` into a full display label is the eventual caller's job
+  (issue #23, "Exibir diagrama do acorde sugerido" — not yet built).
+  """
+  @spec root_note_name(
+          Ponteio.Chords.ChordShape.t(),
+          base_fret :: integer(),
+          capo_fret :: integer()
+        ) ::
+          String.t()
+  def root_note_name(chord_shape, base_fret, capo_fret) do
+    open_string_index = Map.fetch!(@standard_tuning, chord_shape.root_string)
+    note_index = Integer.mod(open_string_index + base_fret + capo_fret, 12)
+
+    Enum.at(@note_names, note_index)
   end
 end
