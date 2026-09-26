@@ -15,6 +15,17 @@ defmodule PonteioWeb.TabLive.StudyTest do
   `ChordSegment`/`ChordSuggestion` rows, rather than hand-seeding them —
   exercising this LiveView's whole nested, sorted `Ash.load!/3` call
   against real relationship data.
+
+  The last `describe` block covers issue #24 ("Atualização automática do
+  modo de estudo após conclusão da análise"): the LiveView's reaction to
+  `Ponteio.Tablatures.Changes.RunChordAnalysis`'s own `"tab:\#{tab_id}"`
+  broadcasts (issue #20), asserted the same way that module's own test
+  synchronizes with a subscriber process — sending the broadcast (or, for
+  the completion case, running the real trigger, which broadcasts for
+  real) and then calling `render/1`, a synchronous `GenServer` call to the
+  LiveView process that only returns once every message already queued
+  ahead of it (the broadcast(s) sent moments before, from this same test
+  process) has been handled.
   """
 
   use PonteioWeb.ConnCase, async: false
@@ -159,6 +170,86 @@ defmodule PonteioWeb.TabLive.StudyTest do
 
       assert has_element?(lv, "#study-measure-#{measure_1.id}")
       assert has_element?(lv, "#study-measure-#{measure_2.id}")
+    end
+  end
+
+  describe "live updates while chord analysis runs (issue #24)" do
+    setup :register_and_log_in_user
+
+    test "shows a visible indicator while :analyzing, without navigating", %{
+      conn: conn,
+      user: user
+    } do
+      tab =
+        Tab
+        |> Ash.Changeset.for_create(
+          :create,
+          %{title: "Chega de Saudade", artist: "João Gilberto"},
+          actor: user
+        )
+        |> Ash.create!()
+
+      {:ok, lv, html} = live(conn, ~p"/tabs/#{tab.id}/study")
+      refute html =~ "Analisando"
+      refute has_element?(lv, "#analyzing-banner")
+
+      Phoenix.PubSub.broadcast(Ponteio.PubSub, "tab:#{tab.id}", :analyzing)
+
+      html = render(lv)
+      assert html =~ "Analisando"
+      assert has_element?(lv, "#analyzing-banner")
+
+      # Still the same mounted process, on the same page — no
+      # redirect/push_navigate happened.
+      assert render(lv) =~ "Chega de Saudade"
+    end
+
+    test "reloads chord_segments/chord_suggestions after {:analysis_completed, tab_id}, without navigating",
+         %{conn: conn, user: user} do
+      seed_chord_shape!("shape-live-update", 1, 3)
+
+      tab =
+        Tab
+        |> Ash.Changeset.for_create(:create, %{title: "Águas de Março", artist: "Tom Jobim"},
+          actor: user
+        )
+        |> Ash.create!()
+
+      measure =
+        Measure
+        |> Ash.Changeset.for_create(:create, %{tab_id: tab.id, position: 1}, authorize?: false)
+        |> Ash.create!()
+
+      Note
+      |> Ash.Changeset.for_create(
+        :create,
+        %{measure_id: measure.id, string_number: 1, fret_number: 3, position: 0},
+        authorize?: false
+      )
+      |> Ash.create!()
+
+      # Mounted *before* the tab has ever been analyzed: no chord chip
+      # exists yet in the initial render.
+      {:ok, lv, html} = live(conn, ~p"/tabs/#{tab.id}/study")
+      refute html =~ "Maior"
+
+      # Runs the real trigger (same harness as
+      # `Ponteio.Tablatures.TabRunChordAnalysisTest`) — it broadcasts both
+      # `:analyzing` and `{:analysis_completed, tab.id}` for real, on the
+      # exact topic this LiveView subscribed to in `mount/3`.
+      assert %{success: 2, failure: 0} =
+               AshOban.Test.schedule_and_run_triggers({Tab, :analyze_chords})
+
+      html = render(lv)
+
+      # The newly persisted suggestion now shows up without any
+      # navigation/reload of the page.
+      assert html =~ "Maior"
+      assert html =~ "1 de 1 sugestões"
+
+      # And the transient :analyzing indicator is gone again, now that the
+      # reloaded tab carries the final `status: :ready`.
+      refute html =~ "Analisando"
     end
   end
 
