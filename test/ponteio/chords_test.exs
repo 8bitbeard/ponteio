@@ -332,4 +332,38 @@ defmodule Ponteio.ChordsTest do
       assert Chords.rank_candidates([], 0) == []
     end
   end
+
+  describe "root_note_name/3" do
+    # root_string 6 = low E (open string index 4, "Mi") — see e_major_open/0.
+    test "an open shape (base_fret 0) with no capo names the open string's own note" do
+      assert Chords.root_note_name(e_major_open(), 0, 0) == "Mi"
+    end
+
+    # root_string 5 = A (open string index 9, "Lá") — see barre_major_shape/0.
+    test "a barre shape's root reflects its base_fret with no capo" do
+      # Lá (9) + base_fret 3 = 12 -> mod 12 = 0 -> Dó.
+      assert Chords.root_note_name(barre_major_shape(), 3, 0) == "Dó"
+    end
+
+    test "the capo shifts the named root note by its own fret count" do
+      # Mi (4) + base_fret 0 + capo_fret 2 = 6 -> Fá#.
+      assert Chords.root_note_name(e_major_open(), 0, 2) == "Fá#"
+    end
+
+    test "two tabs with the same relative notes but different capo_fret name different roots" do
+      # Same chord_shape/base_fret (as a same-relative-notes reanalysis
+      # would produce, PRD §6.4 regra 5's own "Testes esperados"), only
+      # capo_fret differs.
+      shape = e_major_open()
+
+      assert Chords.root_note_name(shape, 0, 0) == "Mi"
+      assert Chords.root_note_name(shape, 0, 3) == "Sol"
+    end
+
+    test "wraps around the chromatic scale past Si back to Dó" do
+      # Si (11) + base_fret 1 + capo_fret 0 = 12 -> mod 12 = 0 -> Dó.
+      shape = %{c_major_open() | root_string: 2}
+      assert Chords.root_note_name(shape, 1, 0) == "Dó"
+    end
+  end
 end
