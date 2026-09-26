@@ -164,4 +164,105 @@ defmodule Ponteio.ChordsTest do
       assert Enum.map(candidates, & &1.base_fret) |> Enum.sort() == Enum.to_list(1..12)
     end
   end
+
+  describe "segment_measure/2" do
+    # A `measure_note()` doesn't have to be a `Ponteio.Tablatures.Note`
+    # struct — this module's own moduledoc says these functions "take/
+    # return plain data" — so a plain map with the three keys the
+    # typedoc requires is enough, and keeps this test file DB/Ash-free
+    # like `candidates_for_window/2`'s (SDD §6).
+    defp note(string_number, fret_number, position) do
+      %{string_number: string_number, fret_number: fret_number, position: position}
+    end
+
+    test "an empty measure has no segments" do
+      assert Chords.segment_measure([], [e_major_open(), c_major_open()]) == []
+    end
+
+    test "a measure whose notes all fit a single candidate is one chorded segment" do
+      # Strings 1, 2 and 6 all at fret 0: matches the E maior aberto shape
+      # (index 0, 1 and 5 of its relative_frets are all 0) as a single
+      # window; the C maior aberto shape mutes string 6, so it can never
+      # be a candidate here regardless of grouping.
+      notes = [note(1, 0, 0), note(2, 0, 1), note(6, 0, 2)]
+
+      assert [segment] = Chords.segment_measure(notes, [e_major_open(), c_major_open()])
+
+      assert segment.start_position == 0
+      assert segment.end_position == 2
+      assert segment.status == :chorded
+      assert [%{chord_shape: matched, base_fret: 0}] = segment.candidates
+      assert matched.slug == "e-major-open"
+    end
+
+    test "a measure that needs a chord change midway is two chorded segments" do
+      # Positions 0-1 (strings 1 and 2 at fret 0) only fit E maior aberto;
+      # positions 2-3 (strings 3 and 2, fret 0 and 1) only fit C maior
+      # aberto (same window as the `candidates_for_window/2` test above).
+      # The two windows can't be merged into one: string 2 would need to
+      # be fret 0 (from position 1) and fret 1 (from position 3) at once,
+      # which no single `{shape, base_fret}` pair can satisfy — forcing
+      # the chord change the dynamic programming recurrence must find.
+      notes = [note(1, 0, 0), note(2, 0, 1), note(3, 0, 2), note(2, 1, 3)]
+
+      assert [first, second] =
+               Chords.segment_measure(notes, [e_major_open(), c_major_open()])
+
+      assert first.start_position == 0
+      assert first.end_position == 1
+      assert first.status == :chorded
+      assert [%{chord_shape: first_match}] = first.candidates
+      assert first_match.slug == "e-major-open"
+
+      assert second.start_position == 2
+      assert second.end_position == 3
+      assert second.status == :chorded
+      assert [%{chord_shape: second_match}] = second.candidates
+      assert second_match.slug == "c-major-open"
+    end
+
+    test "an isolated note with no candidate forces a 3rd, no_match segment" do
+      # Same chorded E/C aberto windows as the previous test, but with a
+      # note at position 2 (string 1, fret 5) sandwiched between them that
+      # no shape can ever produce at base_fret 0 (both shapes are fixed at
+      # min/max_base_fret 0) — it can't join either neighbor into a wider
+      # matching window, and a `no_match` window is only ever accepted at
+      # size 1, so it must surface as its own segment.
+      notes = [
+        note(1, 0, 0),
+        note(2, 0, 1),
+        note(1, 5, 2),
+        note(3, 0, 3),
+        note(2, 1, 4)
+      ]
+
+      assert [first, isolated, third] =
+               Chords.segment_measure(notes, [e_major_open(), c_major_open()])
+
+      assert first.start_position == 0
+      assert first.end_position == 1
+      assert first.status == :chorded
+
+      assert isolated.start_position == 2
+      assert isolated.end_position == 2
+      assert isolated.status == :no_match
+      assert isolated.candidates == []
+
+      assert third.start_position == 3
+      assert third.end_position == 4
+      assert third.status == :chorded
+      assert [%{chord_shape: third_match}] = third.candidates
+      assert third_match.slug == "c-major-open"
+    end
+
+    test "notes out of insertion order are sorted by position before segmenting" do
+      notes = [note(2, 0, 1), note(1, 0, 0)]
+
+      assert [segment] = Chords.segment_measure(notes, [e_major_open()])
+
+      assert segment.start_position == 0
+      assert segment.end_position == 1
+      assert segment.status == :chorded
+    end
+  end
 end
