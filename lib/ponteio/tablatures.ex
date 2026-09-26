@@ -14,16 +14,22 @@ defmodule Ponteio.Tablatures do
   `Tab`'s `:run_chord_analysis` action — see that action's own description
   and `Ponteio.Tablatures.Changes.RunChordAnalysis`.
 
-  Neither `Measure`/`Note` nor `ChordSegment`/`ChordSuggestion` has a code
-  interface entry — no LiveView calls their actions directly.
-  `TabLive.Editor`'s note-entry grid (issues #11-#13) keeps edits as local
-  assigns, and `upsert_measure_notes` (issue #14) is what persists that
-  tree in bulk on save, via `Ponteio.Tablatures.Changes.UpsertMeasureNotes`
-  calling `Ash.create!`/`Ash.destroy!` on `Measure`/`Note` directly.
-  Likewise, `RunChordAnalysis` (issue #20) is the sole, internal-only
-  caller of `ChordSegment`/`ChordSuggestion`'s actions — none of the four
-  resources warrants a code interface entry for a caller that only ever
-  exists once, inside this same domain.
+  Neither `Measure`/`Note` nor `ChordSuggestion` has a code interface
+  entry — no LiveView calls their actions directly. `TabLive.Editor`'s
+  note-entry grid (issues #11-#13) keeps edits as local assigns, and
+  `upsert_measure_notes` (issue #14) is what persists that tree in bulk on
+  save, via `Ponteio.Tablatures.Changes.UpsertMeasureNotes` calling
+  `Ash.create!`/`Ash.destroy!` on `Measure`/`Note` directly. Likewise,
+  `RunChordAnalysis` (issue #20) is the sole, internal-only caller of
+  `ChordSegment`'s `:create`/`:destroy` and `ChordSuggestion`'s actions —
+  neither resource warrants a code interface entry for those, since that
+  caller only ever exists once, inside this same domain.
+
+  `ChordSegment` does get one entry, `select_chord_suggestion` (issue #21,
+  "Usuário escolhe entre sugestões de acorde ambíguas") — its
+  `:select_chord_suggestion` action is genuinely actor-driven (the user
+  picking a candidate in the eventual "Modo de estudo" LiveView, issues
+  #22/#23), unlike every other action on these four resources.
   """
 
   use Ash.Domain,
@@ -40,7 +46,11 @@ defmodule Ponteio.Tablatures do
 
     resource Ponteio.Tablatures.Measure
     resource Ponteio.Tablatures.Note
-    resource Ponteio.Tablatures.ChordSegment
+
+    resource Ponteio.Tablatures.ChordSegment do
+      define :select_chord_suggestion, action: :select_chord_suggestion, args: [:chord_suggestion]
+    end
+
     resource Ponteio.Tablatures.ChordSuggestion
   end
 end

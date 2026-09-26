@@ -62,13 +62,32 @@ defmodule Ponteio.Tablatures.Changes.RunChordAnalysis do
   complexity here since this action's job is entirely determined by
   `tab.id`, never by *who* triggered it).
 
-  ## Scope: selection preservation and capo are other issues' jobs
+  ## Selection preservation across re-runs (issue #21)
 
-  This module does not try to match a new `ChordSegment` back to a
-  previous run's segment to preserve `selected_suggestion_id` — that's
-  issue #21's ("Usuário escolhe entre sugestões de acorde ambíguas") own
-  stated scope, to be added here once `ChordSegment.select_chord_suggestion`
-  exists. Nor does it do any capo arithmetic: `Note.fret_number` is already
+  Before deleting a tab's old `ChordSegment` tree, `load_previous_selections!/1`
+  reads it one last time (loading each segment's `selected_suggestion`) and
+  keys whichever ones carry a pick by `{measure_id, start_position,
+  end_position}` — capturing the *chosen candidate's own* `chord_shape_id`
+  + `base_fret`, not its (about-to-be-deleted) `ChordSuggestion` id, since
+  that row never survives this run (see `delete_previous_segments!/1`;
+  `ChordSuggestion`'s `reference :chord_segment, on_delete: :delete`
+  cascades it away with its parent segment).
+
+  Once a new segment's candidates are ranked and persisted
+  (`persist_segment!/3`), `restore_selection!/4` looks up that same
+  `{measure_id, start_position, end_position}` key (a segment "equivalent"
+  to one from the prior run, per this issue's stated equivalence rule) and,
+  if a newly created `ChordSuggestion` shares that exact `chord_shape_id` +
+  `base_fret`, calls `ChordSegment.select_chord_suggestion` (issue #21) to
+  re-attach the user's choice to its fresh row. No match at either step —
+  a changed segmentation (different key), or the previously-chosen
+  candidate no longer ranking (same key, no matching shape/fret pair) —
+  leaves the new segment unselected, which is this issue's own documented
+  fallback (defaults to displaying rank 1).
+
+  ## Scope: capo is another issue's job
+
+  This module does no capo arithmetic: `Note.fret_number` is already
   capo-relative (issue #11), and neither `Chords.candidates_for_window/2`
   nor `Chords.segment_measure/2` takes a capo argument at all — issue #19
   ("Considerar capotraste na análise de acordes") is about the *chord name*
@@ -83,6 +102,7 @@ defmodule Ponteio.Tablatures.Changes.RunChordAnalysis do
   alias Ponteio.Chords
   alias Ponteio.Chords.ChordShape
   alias Ponteio.Repo
+  alias Ponteio.Tablatures
   alias Ponteio.Tablatures.ChordSegment
   alias Ponteio.Tablatures.ChordSuggestion
   alias Ponteio.Tablatures.Measure
@@ -121,8 +141,9 @@ defmodule Ponteio.Tablatures.Changes.RunChordAnalysis do
         chord_shapes = Ash.read!(ChordShape, authorize?: false)
         measures = load_measures!(tab)
 
+        previous_selections = load_previous_selections!(measures)
         delete_previous_segments!(measures)
-        analyze_measures!(measures, chord_shapes)
+        analyze_measures!(measures, chord_shapes, previous_selections)
       end)
 
     :ok
@@ -134,6 +155,33 @@ defmodule Ponteio.Tablatures.Changes.RunChordAnalysis do
     |> Ash.Query.sort(position: :asc)
     |> Ash.Query.load(:notes)
     |> Ash.read!(authorize?: false)
+  end
+
+  # Reads the about-to-be-replaced `ChordSegment` tree one last time,
+  # keyed by `{measure_id, start_position, end_position}` (this issue's
+  # segment-equivalence rule), capturing only the *chosen candidate's own*
+  # `chord_shape_id`/`base_fret` for whichever segments carry a pick — see
+  # this module's moduledoc ("Selection preservation across re-runs").
+  defp load_previous_selections!(measures) do
+    measure_ids = Enum.map(measures, & &1.id)
+
+    ChordSegment
+    |> Ash.Query.filter(measure_id in ^measure_ids)
+    |> Ash.Query.load(:selected_suggestion)
+    |> Ash.read!(authorize?: false)
+    |> Map.new(fn segment ->
+      key = {segment.measure_id, segment.start_position, segment.end_position}
+      {key, selection_fingerprint(segment.selected_suggestion)}
+    end)
+  end
+
+  defp selection_fingerprint(nil), do: nil
+
+  defp selection_fingerprint(%ChordSuggestion{
+         chord_shape_id: chord_shape_id,
+         base_fret: base_fret
+       }) do
+    {chord_shape_id, base_fret}
   end
 
   defp delete_previous_segments!(measures) do
@@ -149,33 +197,51 @@ defmodule Ponteio.Tablatures.Changes.RunChordAnalysis do
   # accumulator carries from one measure's last segment into the next
   # measure's first, never resetting at a measure boundary. Starts at `0`
   # (open position), the documented default for the very first segment.
-  defp analyze_measures!(measures, chord_shapes) do
+  defp analyze_measures!(measures, chord_shapes, previous_selections) do
     Enum.reduce(measures, 0, fn measure, previous_position ->
-      analyze_measure!(measure, chord_shapes, previous_position)
+      analyze_measure!(measure, chord_shapes, previous_position, previous_selections)
     end)
   end
 
-  defp analyze_measure!(measure, chord_shapes, previous_position) do
+  defp analyze_measure!(measure, chord_shapes, previous_position, previous_selections) do
     notes = Enum.sort_by(measure.notes, & &1.position)
 
     notes
     |> Chords.segment_measure(chord_shapes)
     |> Enum.reduce(previous_position, fn segment, previous_position ->
-      persist_segment!(measure, segment, previous_position)
+      persist_segment!(measure, segment, previous_position, previous_selections)
     end)
   end
 
-  defp persist_segment!(measure, %{status: :no_match} = segment, previous_position) do
+  defp persist_segment!(
+         measure,
+         %{status: :no_match} = segment,
+         previous_position,
+         _previous_selections
+       ) do
     create_chord_segment!(measure, segment, :no_match)
 
     previous_position
   end
 
-  defp persist_segment!(measure, %{status: :chorded} = segment, previous_position) do
+  defp persist_segment!(
+         measure,
+         %{status: :chorded} = segment,
+         previous_position,
+         previous_selections
+       ) do
     chord_segment = create_chord_segment!(measure, segment, :suggested)
     ranked = Chords.rank_candidates(segment.candidates, previous_position)
 
-    Enum.each(ranked, &create_chord_suggestion!(chord_segment, &1))
+    created_suggestions = Enum.map(ranked, &create_chord_suggestion!(chord_segment, &1))
+
+    restore_selection!(
+      chord_segment,
+      measure.id,
+      segment,
+      created_suggestions,
+      previous_selections
+    )
 
     # The next segment's reference position is rank 1's own base_fret
     # (SDD §3.3) — computed during this same pass, never the user's
@@ -183,6 +249,31 @@ defmodule Ponteio.Tablatures.Changes.RunChordAnalysis do
     case ranked do
       [%{base_fret: base_fret} | _] -> base_fret
       [] -> previous_position
+    end
+  end
+
+  # Re-attaches a preserved user choice to the fresh `chord_segment` this
+  # run just created, when it is equivalent to a previous-run segment that
+  # had one (issue #21) — see this module's moduledoc. A no-op (segment
+  # stays unselected) when there's no equivalent previous segment, or the
+  # previously chosen `{chord_shape_id, base_fret}` pair isn't among this
+  # run's own newly ranked candidates for it.
+  defp restore_selection!(
+         chord_segment,
+         measure_id,
+         segment,
+         created_suggestions,
+         previous_selections
+       ) do
+    key = {measure_id, segment.start_position, segment.end_position}
+
+    with fingerprint when not is_nil(fingerprint) <- Map.get(previous_selections, key),
+         %ChordSuggestion{} = matching_suggestion <-
+           Enum.find(created_suggestions, &(selection_fingerprint(&1) == fingerprint)) do
+      {:ok, _} =
+        Tablatures.select_chord_suggestion(chord_segment, matching_suggestion, authorize?: false)
+    else
+      _ -> :ok
     end
   end
 

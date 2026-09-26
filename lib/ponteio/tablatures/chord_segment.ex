@@ -13,17 +13,19 @@ defmodule Ponteio.Tablatures.ChordSegment do
   naming: a "chorded" segment always gets ranked, persisted
   `ChordSuggestion`s, hence "suggested" once it's a database row).
 
-  `Ponteio.Tablatures.Changes.RunChordAnalysis` (issue #20) is the only
-  writer: it deletes every `ChordSegment` for a tab and recreates the
-  current analysis result fresh on each run (SDD §3.4's "apaga
-  chord_segments/chord_suggestions antigos do tab") — this resource has no
-  `:update` action because nothing ever mutates a segment in place yet.
-  Issue #21 ("Usuário escolhe entre sugestões de acorde ambíguas") is what
-  will add `select_chord_suggestion`, an update action that only ever
-  touches `selected_suggestion_id`, plus the reanalysis logic that carries
-  a matching previous selection forward across re-runs — neither exists
-  yet, so `selected_suggestion_id` is always nil coming out of this
-  issue's `RunChordAnalysis`.
+  `Ponteio.Tablatures.Changes.RunChordAnalysis` (issue #20) deletes every
+  `ChordSegment` for a tab and recreates the current analysis result fresh
+  on each run (SDD §3.4's "apaga chord_segments/chord_suggestions antigos
+  do tab") — it is still the only writer of `:create`/`:destroy`, and (as
+  of issue #21) also the module that carries a matching previous
+  `selected_suggestion_id` forward across re-runs when the new segment is
+  equivalent to one from the prior run (same `measure_id` +
+  `start_position`/`end_position`).
+
+  Issue #21 ("Usuário escolhe entre sugestões de acorde ambíguas") added
+  `:select_chord_suggestion`, the only *actor-driven* update action here —
+  it exclusively touches `selected_suggestion_id`, never anything else on
+  this resource.
   """
 
   use Ash.Resource,
@@ -43,11 +45,11 @@ defmodule Ponteio.Tablatures.ChordSegment do
       reference :measure, on_delete: :delete
 
       # `selected_suggestion_id` points at one of *this segment's own*
-      # `ChordSuggestion` rows (issue #21, not yet implemented) — nil until
-      # then. `on_delete: :nilify` rather than `:delete`: destroying a
-      # suggestion (e.g. the next `RunChordAnalysis` run clearing old ones)
-      # must not cascade into destroying the segment that happened to
-      # reference it, just clear the pick.
+      # `ChordSuggestion` rows (issue #21's `:select_chord_suggestion`) —
+      # nil until the user picks one. `on_delete: :nilify` rather than
+      # `:delete`: destroying a suggestion (e.g. the next `RunChordAnalysis`
+      # run clearing old ones) must not cascade into destroying the segment
+      # that happened to reference it, just clear the pick.
       reference :selected_suggestion, on_delete: :nilify
     end
   end
@@ -63,9 +65,41 @@ defmodule Ponteio.Tablatures.ChordSegment do
       Persists one resolved segment for a measure — called only from
       `Ponteio.Tablatures.Changes.RunChordAnalysis` (issue #20), never
       directly from a LiveView. `selected_suggestion_id` is never accepted
-      here (issue #21's `select_chord_suggestion` is the only way it's
-      ever set).
+      here (issue #21's `:select_chord_suggestion` is the only way it's
+      ever set, aside from `RunChordAnalysis`'s own reanalysis-preservation
+      copy).
       """
+    end
+
+    update :select_chord_suggestion do
+      accept []
+      require_atomic? false
+
+      argument :chord_suggestion, :struct do
+        allow_nil? false
+        constraints instance_of: Ponteio.Tablatures.ChordSuggestion
+
+        description """
+        The candidate the user picked among this segment's own
+        `chord_suggestions` — must belong to this `ChordSegment` (its
+        `chord_segment_id` must match), or the action fails.
+        """
+      end
+
+      description """
+      Persists the user's chosen candidate among this segment's ranked
+      suggestions (issue #21, "Usuário escolhe entre sugestões de acorde
+      ambíguas"; PRD §6.4 regra 3; SDD §5) — the code interface behind the
+      `chord-chip` selector in the study screen (issues #22/#23, not this
+      issue's scope). Fails with an `Ash.Error.Changes.InvalidArgument` if
+      `chord_suggestion` does not belong to this segment. Preserved across
+      a later re-analysis only when the new segment is equivalent to this
+      one (same `measure_id` + `start_position`/`end_position` — see
+      `Ponteio.Tablatures.Changes.RunChordAnalysis`); otherwise the new
+      segment starts unselected (defaults to displaying rank 1).
+      """
+
+      change Ponteio.Tablatures.Changes.SelectChordSuggestion
     end
   end
 
@@ -77,8 +111,16 @@ defmodule Ponteio.Tablatures.ChordSegment do
     # these with `authorize?: false` (a system-triggered background
     # computation, not an actor-initiated request — see that module's
     # moduledoc), so this policy only ever gates actor-driven reads (e.g.
-    # the eventual "Modo de estudo" LiveView, issues #22/#23).
+    # the eventual "Modo de estudo" LiveView, issues #22/#23) and
+    # `:destroy`.
     policy action_type([:read, :destroy]) do
+      authorize_if relates_to_actor_via([:measure, :tab, :user])
+    end
+
+    # `:select_chord_suggestion` (issue #21) is the one `:update` action
+    # here that *is* actor-driven (the user picking a candidate in study
+    # mode) — same ownership shape as the read/destroy policy above.
+    policy action_type(:update) do
       authorize_if relates_to_actor_via([:measure, :tab, :user])
     end
   end
@@ -126,9 +168,11 @@ defmodule Ponteio.Tablatures.ChordSegment do
       allow_nil? true
 
       description """
-      The user's chosen candidate among this segment's suggestions (issue
-      #21, not yet implemented) — always nil coming out of this issue's
-      `RunChordAnalysis`.
+      The user's chosen candidate among this segment's suggestions, set by
+      `:select_chord_suggestion` (issue #21) or carried forward across a
+      re-analysis by `RunChordAnalysis` when the segment is equivalent to
+      one from the prior run. Nil otherwise (the UI then defaults to
+      displaying rank 1).
       """
     end
 
