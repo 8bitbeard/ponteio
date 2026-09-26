@@ -61,6 +61,23 @@ config :ponteio,
   generators: [timestamp_type: :utc_datetime],
   ash_domains: [Ponteio.Accounts, Ponteio.Tablatures, Ponteio.Chords]
 
+# Oban backs the AshOban trigger on `Ponteio.Tablatures.Tab` that runs chord
+# analysis in the background (issue #20, PRD §6.4 regra 6, §8; SDD §3.4).
+# `Oban.Plugins.Cron` is required by `AshOban.config/2` (called from
+# `Ponteio.Application`) whenever a trigger declares a `scheduler_cron` (the
+# `:analyze_chords` trigger's default, "* * * * *") — it's what actually
+# polls for `Tab`s matching the trigger's `where` clause once a minute.
+# `:tab_analyze_chords` is the queue named explicitly on that trigger (SDD
+# §3.4's `oban do triggers do trigger :analyze_chords do ... end end`),
+# mirroring the same name AshOban would derive by default (`Tab`'s
+# `short_name`, "tab", plus the trigger name).
+config :ponteio, Oban,
+  engine: Oban.Engines.Basic,
+  notifier: Oban.Notifiers.PG,
+  repo: Ponteio.Repo,
+  plugins: [Oban.Plugins.Cron],
+  queues: [tab_analyze_chords: 10]
+
 # Configure the endpoint
 config :ponteio, PonteioWeb.Endpoint,
   url: [host: "localhost"],
