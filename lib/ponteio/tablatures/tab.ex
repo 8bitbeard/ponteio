@@ -42,6 +42,14 @@ defmodule Ponteio.Tablatures.Tab do
   built up as local assigns (issues #11-#13) and flip `status` back to
   `:draft`, in one transaction (PRD §6.4 regra 6; SDD §3.4, §5). See its
   own description for the persistence rule.
+
+  Issue #20 ("Disparo assíncrono da análise de acordes com status
+  visível") added `ChordSegment`/`ChordSuggestion` (closing the gap issues
+  #10/#14 above anticipated), the `extensions: [AshOban]` `oban do
+  triggers do trigger :analyze_chords do ... end end` block that watches
+  `status`, and the `:mark_analyzing`/`:run_chord_analysis` actions that
+  block drives — see `Ponteio.Tablatures.Changes.RunChordAnalysis` for the
+  actual orchestration.
   """
 
   use Ash.Resource,
@@ -49,6 +57,7 @@ defmodule Ponteio.Tablatures.Tab do
     domain: Ponteio.Tablatures,
     data_layer: AshPostgres.DataLayer,
     authorizers: [Ash.Policy.Authorizer],
+    extensions: [AshOban],
     # The primary (and, for now, only) `:read` action carries a `sort`
     # preparation on purpose — it's the listing order for issue #7's
     # "Minhas tablaturas" screen, and there is no secondary read action to
@@ -59,6 +68,38 @@ defmodule Ponteio.Tablatures.Tab do
   postgres do
     table "tabs"
     repo Ponteio.Repo
+  end
+
+  oban do
+    triggers do
+      # Fires `:run_chord_analysis` (issue #20) whenever a tab is left
+      # `:draft` (freshly saved by `:upsert_measure_notes`, issue #14) or
+      # `:analyzing` (a previous run that never made it to `:ready` — a
+      # crashed/killed job — gets picked up again the next time the
+      # scheduler polls, since the actual persisted status never advanced
+      # past `:analyzing` for it). SDD §3.4's own pseudocode.
+      trigger :analyze_chords do
+        action :run_chord_analysis
+        where expr(status == :draft or status == :analyzing)
+        queue(:tab_analyze_chords)
+        read_action :ready_for_chord_analysis
+
+        # See `Ponteio.Tablatures.Changes.RunChordAnalysis`'s moduledoc
+        # ("Why tab.status genuinely visits :analyzing") for why this must
+        # be `false`: AshOban only wraps the read+lock+action call in its
+        # own transaction when this is `true` *and* the action's own
+        # `transaction?` is `true` — either one being `false` is enough to
+        # let that action's internal early `:analyzing` write commit on
+        # its own, independently of the action's final commit.
+        lock_for_update?(false)
+
+        # Explicit, stable module names (`mix ash_oban.set_default_module_names`'s
+        # own suggestion) — renaming the trigger or the resource later
+        # won't orphan whatever jobs Oban already persisted under these.
+        worker_module_name(Ponteio.Tablatures.Tab.AshOban.Worker.AnalyzeChords)
+        scheduler_module_name(Ponteio.Tablatures.Tab.AshOban.Scheduler.AnalyzeChords)
+      end
+    end
   end
 
   actions do
@@ -86,6 +127,19 @@ defmodule Ponteio.Tablatures.Tab do
       prepare build(sort: [inserted_at: :desc])
     end
 
+    read :ready_for_chord_analysis do
+      description """
+      Dedicated read action for the `:analyze_chords` AshOban trigger
+      (issue #20) — `ash_oban` requires the trigger's read action to
+      support keyset pagination, which the primary `:read` above (issue
+      #7's "Minhas tablaturas" listing) has no reason to be configured
+      for. Filtering by `status` is entirely the trigger's own `where`
+      clause; this action applies none itself.
+      """
+
+      pagination keyset?: true
+    end
+
     update :update do
       primary? true
       accept [:title, :artist, :capo_fret]
@@ -110,10 +164,11 @@ defmodule Ponteio.Tablatures.Tab do
       description """
       Deletes a tablature (issue #9, PRD §6.2). Cascading removal of
       `Measure`/`Note`/`ChordSegment`/`ChordSuggestion` is out of scope
-      here — none of those resources exist yet, and each is expected to
-      declare its own `belongs_to :tab` with `on_delete: :delete_all` in
-      its migration once introduced, so the database itself takes care
-      of the cascade without additional code in this action.
+      here — each of those resources declares its own reference back to
+      its parent with `on_delete: :delete` in its `postgres.references`
+      block (`Measure`/`ChordSegment` to `Tab`/`Measure` respectively,
+      `Note`/`ChordSuggestion` similarly), so the database itself takes
+      care of the whole cascade without additional code in this action.
       """
     end
 
@@ -126,8 +181,8 @@ defmodule Ponteio.Tablatures.Tab do
       transaction and marks the tab `status: :draft` (issue #14, PRD §6.4
       regra 6; SDD §3.4, §5) — called once, on `phx-submit`, never per
       keystroke (SDD §3.4's "não a cada tecla digitada"). The `:draft`
-      status is the side effect issue #20's AshOban trigger (not yet
-      implemented) will watch for to enqueue `:run_chord_analysis`
+      status is the side effect the `:analyze_chords` AshOban trigger
+      (issue #20) watches for to enqueue `:run_chord_analysis`
       automatically; this action's job stops at setting it.
 
       `measures` replaces the tab's whole `Measure`/`Note` tree —
@@ -154,9 +209,67 @@ defmodule Ponteio.Tablatures.Tab do
       change set_attribute(:status, :draft)
       change Ponteio.Tablatures.Changes.UpsertMeasureNotes
     end
+
+    update :mark_analyzing do
+      accept []
+      require_atomic? false
+
+      description """
+      Internal-only `status: :analyzing` flip (issue #20). Called as its
+      own, independently-committed `Ash.update!` from
+      `Ponteio.Tablatures.Changes.RunChordAnalysis` — never from a
+      LiveView, and never as part of `:run_chord_analysis`'s own changeset
+      — see that change module's moduledoc for why the two need to be
+      genuinely separate writes.
+      """
+
+      change set_attribute(:status, :analyzing)
+    end
+
+    update :run_chord_analysis do
+      accept []
+      require_atomic? false
+
+      # Disables AshOban's own transaction+lock wrapping around this
+      # action's invocation — required for `:mark_analyzing` (above) to
+      # commit independently rather than nesting inside this action's own
+      # transaction. See `Ponteio.Tablatures.Changes.RunChordAnalysis`'s
+      # moduledoc and the `:analyze_chords` trigger's own comment.
+      transaction? false
+
+      description """
+      Runs the chord-suggestion engine (`Ponteio.Chords`, issues #15-#17)
+      over every measure of this tab and persists the result as
+      `ChordSegment`/`ChordSuggestion` rows (issue #20, PRD §6.4 regra 6,
+      §8; SDD §3.4). Triggered automatically by the `:analyze_chords`
+      AshOban trigger above whenever `status` is `:draft` or `:analyzing`
+      — never called directly from a LiveView. See
+      `Ponteio.Tablatures.Changes.RunChordAnalysis` for the actual
+      orchestration (status transitions, PubSub broadcasts, persistence).
+      """
+
+      change Ponteio.Tablatures.Changes.RunChordAnalysis
+    end
   end
 
   policies do
+    # AshOban's scheduler/worker (issue #20) has no end-user actor behind
+    # it — it's a cron-driven background computation acting on `tab.id`
+    # alone, not a request made on anyone's behalf. Without this bypass,
+    # the `where`-filtered read the scheduler performs (and the
+    # `:run_chord_analysis` call itself) would fall through to the
+    # policies below with `actor: nil`, which the `:filter`-access-type
+    # read policy would quietly turn into "matches nothing" — the trigger
+    # would never find any tab to analyze. This is `ash_oban`'s own
+    # documented fix for exactly that (see its "Authorizing actions"
+    # guide) — every *internal* call `RunChordAnalysis` itself makes
+    # (reading `Measure`/`Note`, writing `ChordSegment`/`ChordSuggestion`)
+    # instead passes `authorize?: false` directly, so this bypass only
+    # needs to cover `Tab`'s own actions.
+    bypass AshOban.Checks.AshObanInteraction do
+      authorize_if always()
+    end
+
     # Only an authenticated actor may create a tablature — it is always
     # related to that actor via `relate_actor(:user)` above, so there is no
     # "create on behalf of someone else" case to guard against here.

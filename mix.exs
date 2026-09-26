@@ -62,6 +62,8 @@ defmodule Ponteio.MixProject do
       {:sourceror, "~> 1.8", only: [:dev, :test]},
       {:ash_postgres, "~> 2.0"},
       {:ash, "~> 3.0"},
+      {:ash_oban, "~> 0.8"},
+      {:oban, "~> 2.19"},
       {:phoenix, "~> 1.8.14"},
       {:phoenix_ecto, "~> 4.5"},
       {:ecto_sql, "~> 3.13"},

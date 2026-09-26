@@ -7,10 +7,11 @@ defmodule Ponteio.Tablatures.TabUpsertMeasureNotesTest do
   `Measure`/`Note` rows already existed for the tab, and `status` always
   ends up `:draft`.
 
-  Issue #20's AshOban trigger (the thing that actually watches `status`
-  and enqueues `:run_chord_analysis`) doesn't exist in this codebase yet —
-  this module stops at the side effect this action is responsible for
-  (setting `status: :draft`), not the trigger itself; see the PR for #14.
+  This module stops at the side effect this action is responsible for
+  (setting `status: :draft`), not the `:analyze_chords` AshOban trigger
+  that actually watches `status` and enqueues `:run_chord_analysis` —
+  that trigger is issue #20's own scope, covered by
+  `Ponteio.Tablatures.TabRunChordAnalysisTest`.
   """
 
   use Ponteio.DataCase, async: true

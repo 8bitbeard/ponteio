@@ -49,8 +49,8 @@ defmodule PonteioWeb.TabLive.Editor do
   description) — never on `phx-change`/per keystroke, satisfying the PRD
   §6.4 regra 6 requirement that recalculation only happens on save, not on
   every edit. That action also marks `tab.status = :draft`, which is what
-  issue #20's (not yet implemented) AshOban trigger will watch for to
-  enqueue automatic chord-suggestion reanalysis — this issue's job stops at
+  the `:analyze_chords` AshOban trigger (issue #20) watches for to enqueue
+  automatic chord-suggestion reanalysis — this issue's job stops at
   setting that status; it does not itself trigger any analysis.
 
   ## Adding/splitting compassos (issue #12)

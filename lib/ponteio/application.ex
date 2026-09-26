@@ -12,8 +12,11 @@ defmodule Ponteio.Application do
       Ponteio.Repo,
       {DNSCluster, query: Application.get_env(:ponteio, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: Ponteio.PubSub},
-      # Start a worker by calling: Ponteio.Worker.start_link(arg)
-      # {Ponteio.Worker, arg},
+      # AshOban's `:analyze_chords` trigger on `Ponteio.Tablatures.Tab`
+      # (issue #20, SDD §3.4) needs Oban itself supervised — `AshOban.config/2`
+      # takes our base `:ponteio, Oban` config (config/config.exs) and layers
+      # in whatever queues/cron entries every domain's resources declare.
+      {Oban, AshOban.config(Application.fetch_env!(:ponteio, :ash_domains), oban_config())},
       # Start to serve requests, typically the last entry
       PonteioWeb.Endpoint,
       {AshAuthentication.Supervisor, [otp_app: :ponteio]}
@@ -32,4 +35,6 @@ defmodule Ponteio.Application do
     PonteioWeb.Endpoint.config_change(changed, removed)
     :ok
   end
+
+  defp oban_config, do: Application.fetch_env!(:ponteio, Oban)
 end

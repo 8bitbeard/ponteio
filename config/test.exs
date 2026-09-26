@@ -9,6 +9,13 @@ config :bcrypt_elixir, log_rounds: 1
 config :ash_authentication, http_adapter: Ponteio.Support.GoogleOAuthStub
 config :ash, policies: [show_policy_breakdowns?: true], disable_async?: true
 
+# Oban's `:manual` testing mode (issue #20) disables the automatic
+# queue/plugin supervisors — nothing runs in the background on its own.
+# Tests instead call `AshOban.Test.schedule_and_run_triggers/2` (built on
+# `Oban.Testing`) to schedule and drain the `:analyze_chords` trigger
+# synchronously, deterministically, one test at a time.
+config :ponteio, Oban, testing: :manual
+
 # Configure your database
 #
 # The MIX_TEST_PARTITION environment variable can be used

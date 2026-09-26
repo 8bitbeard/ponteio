@@ -9,16 +9,21 @@ defmodule Ponteio.Tablatures do
   tablatura") — `Measure` as the technical prerequisite `Note` needs to
   exist (its full "+Adicionar compasso"/"quebrar compasso" UI is issue
   #12's scope), `Note` as that issue's actual new resource. `ChordSegment`
-  and `ChordSuggestion` are added in future issues, once the corresponding
-  user stories are scoped.
+  and `ChordSuggestion` were added by issue #20 ("Disparo assíncrono da
+  análise de acordes com status visível") as the persisted output of
+  `Tab`'s `:run_chord_analysis` action — see that action's own description
+  and `Ponteio.Tablatures.Changes.RunChordAnalysis`.
 
-  Neither `Measure` nor `Note` has a code interface entry — no LiveView
-  calls their actions directly; `TabLive.Editor`'s note-entry grid (issues
-  #11-#13) keeps edits as local assigns, and `upsert_measure_notes` (issue
-  #14) is what persists that tree in bulk on save, via
-  `Ponteio.Tablatures.Changes.UpsertMeasureNotes` calling `Ash.create!`/
-  `Ash.destroy!` on those two resources directly — a one-off, internal-only
-  caller that doesn't itself warrant a code interface entry for either.
+  Neither `Measure`/`Note` nor `ChordSegment`/`ChordSuggestion` has a code
+  interface entry — no LiveView calls their actions directly.
+  `TabLive.Editor`'s note-entry grid (issues #11-#13) keeps edits as local
+  assigns, and `upsert_measure_notes` (issue #14) is what persists that
+  tree in bulk on save, via `Ponteio.Tablatures.Changes.UpsertMeasureNotes`
+  calling `Ash.create!`/`Ash.destroy!` on `Measure`/`Note` directly.
+  Likewise, `RunChordAnalysis` (issue #20) is the sole, internal-only
+  caller of `ChordSegment`/`ChordSuggestion`'s actions — none of the four
+  resources warrants a code interface entry for a caller that only ever
+  exists once, inside this same domain.
   """
 
   use Ash.Domain,
@@ -35,5 +40,7 @@ defmodule Ponteio.Tablatures do
 
     resource Ponteio.Tablatures.Measure
     resource Ponteio.Tablatures.Note
+    resource Ponteio.Tablatures.ChordSegment
+    resource Ponteio.Tablatures.ChordSuggestion
   end
 end
