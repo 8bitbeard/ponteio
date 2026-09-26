@@ -2,8 +2,11 @@ defmodule Ponteio.ChordsTest do
   @moduledoc """
   Covers `Ponteio.Chords.candidates_for_window/2` (issue #15, "Calcular
   candidatos de acorde para uma janela de notas"; PRD §6.4 regra 1; SDD
-  §3.1) — the atomic subset-matching operation the whole chord-suggestion
-  engine is built on top of.
+  §3.1), `segment_measure/2` (issue #16; PRD §6.4 regra 2; SDD §3.2) and
+  `rank_candidates/2` (issue #17, "Ranquear candidatos por menor
+  deslocamento de mão"; PRD §6.4 regra 3; SDD §3.3) — the atomic
+  subset-matching operation the whole chord-suggestion engine is built
+  on top of, plus the segmentation and ranking layered on it.
 
   Plain ExUnit, no `Ponteio.DataCase`: this function is pure Elixir (not
   an Ash action) and its fixtures are plain `%ChordShape{}` structs built
@@ -263,6 +266,70 @@ defmodule Ponteio.ChordsTest do
       assert segment.start_position == 0
       assert segment.end_position == 1
       assert segment.status == :chorded
+    end
+  end
+
+  describe "rank_candidates/2" do
+    # These candidates only need a `chord_shape`/`base_fret` pair — the
+    # tests only care about ordering by `base_fret` displacement, so the
+    # `chord_shape` value itself is an arbitrary, distinguishable atom
+    # rather than a full `%ChordShape{}` fixture like the other describe
+    # blocks build (SDD §3.3's algorithm never inspects `chord_shape`).
+    defp candidate(chord_shape, base_fret) do
+      %{chord_shape: chord_shape, base_fret: base_fret}
+    end
+
+    test "orders candidates by ascending absolute displacement from the previous position" do
+      candidates = [
+        candidate(:far, 10),
+        candidate(:near, 3),
+        candidate(:middle, 6)
+      ]
+
+      assert Chords.rank_candidates(candidates, 2) == [
+               %{chord_shape: :near, base_fret: 3, rank: 1},
+               %{chord_shape: :middle, base_fret: 6, rank: 2},
+               %{chord_shape: :far, base_fret: 10, rank: 3}
+             ]
+    end
+
+    test "ties on displacement are broken by the smallest absolute base_fret" do
+      # previous_position = 5: :low (base_fret 2) and :high (base_fret 8)
+      # are both 3 away from 5, but |2| < |8|, so :low ranks first.
+      candidates = [candidate(:high, 8), candidate(:low, 2)]
+
+      assert Chords.rank_candidates(candidates, 5) == [
+               %{chord_shape: :low, base_fret: 2, rank: 1},
+               %{chord_shape: :high, base_fret: 8, rank: 2}
+             ]
+    end
+
+    test "only the top 3 candidates are returned when there are more than 3" do
+      candidates = [
+        candidate(:d, 9),
+        candidate(:a, 0),
+        candidate(:c, 6),
+        candidate(:b, 3)
+      ]
+
+      assert [first, second, third] = Chords.rank_candidates(candidates, 0)
+
+      assert {first.chord_shape, first.rank} == {:a, 1}
+      assert {second.chord_shape, second.rank} == {:b, 2}
+      assert {third.chord_shape, third.rank} == {:c, 3}
+    end
+
+    test "the first segment of a song ranks against previous_position 0" do
+      candidates = [candidate(:open, 0), candidate(:barre, 3)]
+
+      assert Chords.rank_candidates(candidates, 0) == [
+               %{chord_shape: :open, base_fret: 0, rank: 1},
+               %{chord_shape: :barre, base_fret: 3, rank: 2}
+             ]
+    end
+
+    test "an empty candidate list (e.g. a no_match segment) ranks to an empty list" do
+      assert Chords.rank_candidates([], 0) == []
     end
   end
 end

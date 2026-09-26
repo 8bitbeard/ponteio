@@ -4,15 +4,17 @@ defmodule Ponteio.Chords do
   suggest chords for a tablature (per SDD §1, §2.3). Besides the
   `ChordShape` read-only catalog resource, this module also hosts
   `candidates_for_window/2` (issue #15, "Calcular candidatos de acorde
-  para uma janela de notas"; PRD §6.4 regra 1; SDD §3.1) and
+  para uma janela de notas"; PRD §6.4 regra 1; SDD §3.1),
   `segment_measure/2` (issue #16, "Segmentar compasso automaticamente
   quando notas não cabem em um único acorde"; PRD §6.4 regra 2; SDD §3.2)
-  — the atomic matching operation and the segmentation built on top of it,
-  respectively, both of which the whole suggestion engine (ranking, the
-  `:run_chord_analysis` action) relies on. These are plain Elixir
-  functions, not Ash actions: they take/return plain data and have no
-  policies, so they can be unit-tested without a database, Ash, or
-  LiveView.
+  and `rank_candidates/2` (issue #17, "Ranquear candidatos por menor
+  deslocamento de mão"; PRD §6.4 regra 3; SDD §3.3) — the atomic matching
+  operation, the segmentation built on top of it, and the ranking of a
+  segment's candidates by hand-movement cost, respectively, all of which
+  the whole suggestion engine (the `:run_chord_analysis` action, issue
+  #20) relies on. These are plain Elixir functions, not Ash actions: they
+  take/return plain data and have no policies, so they can be unit-tested
+  without a database, Ash, or LiveView.
   """
 
   use Ash.Domain,
@@ -36,6 +38,13 @@ defmodule Ponteio.Chords do
 
   @typedoc "A `{chord_shape, base_fret}` pair matched against a window."
   @type candidate :: %{chord_shape: Ponteio.Chords.ChordShape.t(), base_fret: integer()}
+
+  @typedoc "A `candidate/0` ranked against the previous segment's position, per `rank_candidates/2`."
+  @type ranked_candidate :: %{
+          chord_shape: Ponteio.Chords.ChordShape.t(),
+          base_fret: integer(),
+          rank: 1..3
+        }
 
   @doc """
   Returns every `%{chord_shape:, base_fret:}` candidate from `chord_shapes`
@@ -230,5 +239,44 @@ defmodule Ponteio.Chords do
       status: status,
       candidates: candidates
     }
+  end
+
+  @doc """
+  Orders a `:chorded` segment's `candidates` (issue #17, "Ranquear
+  candidatos por menor deslocamento de mão"; PRD §6.4 regra 3; SDD §3.3)
+  by how little hand movement each would cost coming from
+  `previous_position`, and returns the top 3 tagged with `rank` `1..3`:
+
+      rank_candidates(candidatos, posicao_anterior):
+        ordena candidatos por abs(candidato.base_fret - posicao_anterior)
+        desempate: menor base_fret absoluto
+        retorna os 3 primeiros, com rank 1..3
+
+  `previous_position` is the **whole song's** last resolved segment
+  position, not reset per measure (SDD §3.3, §8): the guitarist's hand
+  doesn't "reset" at a measure boundary. The very first segment of a
+  song uses `previous_position = 0` (open position) as its default
+  reference — callers (the `:run_chord_analysis` action, issue #20) are
+  responsible for threading that position across measures/segments; this
+  function itself is stateless and only ranks the one list it's given.
+
+  Ties (equal displacement from `previous_position`) are broken by the
+  smallest absolute `base_fret` (SDD §8's open point on secondary tie-
+  break), keeping `Enum.sort_by/2`'s stable ordering for anything still
+  tied after that (mirroring `segment_measure/2`'s own tie-handling:
+  whichever candidate came first in `candidates` wins).
+
+  `candidates` is expected non-empty — an empty list (e.g. a `:no_match`
+  segment) has nothing to rank and returns `[]`.
+  """
+  @spec rank_candidates([candidate()], integer()) :: [ranked_candidate()]
+  def rank_candidates(candidates, previous_position) do
+    candidates
+    |> Enum.sort_by(fn %{base_fret: base_fret} ->
+      {abs(base_fret - previous_position), abs(base_fret)}
+    end)
+    |> Enum.take(3)
+    |> Enum.with_index(1)
+    |> Enum.map(fn {candidate, rank} -> Map.put(candidate, :rank, rank) end)
   end
 end
