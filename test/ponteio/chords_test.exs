@@ -33,9 +33,11 @@ defmodule Ponteio.ChordsTest do
     }
   end
 
-  # A maior, pestana móvel (formato "E" na 5ª corda como raiz): mesma
-  # forma relativa do E maior aberto, mas movível em qualquer base_fret
-  # de 1 a 12 (a corda 6, se tocada, fica abafada nessa forma — nil).
+  # Forma hipotética de pestana móvel, raiz na corda 5 (Lá) com offset 0
+  # nessa corda — então base_fret desloca a nota fundamental diretamente
+  # (ver root_note_name/3 abaixo). Os offsets das demais cordas são só
+  # para exercitar candidates_for_window/2, sem corresponder a nenhum
+  # acorde real.
   defp barre_major_shape do
     %ChordShape{
       slug: "barre-major-e-shape",
@@ -45,7 +47,7 @@ defmodule Ponteio.ChordsTest do
       movable: true,
       min_base_fret: 1,
       max_base_fret: 12,
-      relative_frets: [0, 0, 1, 2, 2, nil]
+      relative_frets: [0, 0, 1, 2, 0, nil]
     }
   end
 
@@ -362,8 +364,18 @@ defmodule Ponteio.ChordsTest do
 
     test "wraps around the chromatic scale past Si back to Dó" do
       # Si (11) + base_fret 1 + capo_fret 0 = 12 -> mod 12 = 0 -> Dó.
-      shape = %{c_major_open() | root_string: 2}
+      # root_string 2 (B) with offset 0 there, so base_fret alone shifts it.
+      shape = %{c_major_open() | root_string: 2, relative_frets: [0, 0, 0, 2, 3, nil]}
       assert Chords.root_note_name(shape, 1, 0) == "Dó"
+    end
+
+    test "adds the shape's own offset at root_string when it isn't 0" do
+      # Regression test: open-g-major (priv/repo/seeds.exs) has root_string
+      # 6, but its relative_frets offset there is 3, not 0 — a bug once
+      # dropped that offset entirely, silently naming this shape "Mi"
+      # instead of "Sol".
+      shape = %{c_major_open() | root_string: 6, relative_frets: [3, 0, 0, 0, 2, 3]}
+      assert Chords.root_note_name(shape, 0, 0) == "Sol"
     end
   end
 end

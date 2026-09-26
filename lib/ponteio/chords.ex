@@ -300,13 +300,20 @@ defmodule Ponteio.Chords do
   `capo_fret` (issue #19, "Considerar capotraste na análise de acordes";
   PRD §6.4 regra 5; SDD §2.3):
 
-      nota = afinação_padrão[chord_shape.root_string] + base_fret + capo_fret  (mod 12)
+      root_fret = relative_frets[chord_shape.root_string] + base_fret
+      nota = afinação_padrão[chord_shape.root_string] + root_fret + capo_fret  (mod 12)
 
   `chord_shape.root_string` picks which of the six standard-tuned open
   strings (`E A D G B E`, a compile-time constant per SDD §2.3, not a
-  resource) carries the chord's root; `base_fret` is the neck position
-  the shape was matched at (`candidate/0`'s own field); `capo_fret` is
-  the owning `Ponteio.Tablatures.Tab.capo_fret` at analysis time.
+  resource) carries the chord's root; `root_fret` is where that specific
+  string is actually fretted once the shape is instantiated at
+  `base_fret` — the same `expected_fret/3` arithmetic
+  `candidates_for_window/2` uses internally, evaluated for `root_string`
+  alone — since `relative_frets[root_string]` is only ever `0` for some
+  catalog shapes (e.g. every E-shape/A-shape/D-shape open or barre entry)
+  and genuinely non-zero for others (e.g. `open-g-major`'s root sits on
+  string 6 at a `relative_frets` offset of 3, not 0); `capo_fret` is the
+  owning `Ponteio.Tablatures.Tab.capo_fret` at analysis time.
 
   This is the **only** place in the whole engine that does capo
   arithmetic: `Note.fret_number` is already capo-relative by the time it
@@ -314,10 +321,10 @@ defmodule Ponteio.Chords do
   neither of those (nor `rank_candidates/2`) needs `capo_fret` at all —
   matching and ranking happen entirely in capo-relative terms. Naming the
   note the listener actually hears, though, requires translating that
-  relative `base_fret` back onto the real neck, which is exactly what
+  relative `root_fret` back onto the real neck, which is exactly what
   adding `capo_fret` here does (a capo raises every open string's pitch
-  by its own fret count, so the true sounding position is `base_fret`
-  frets *above the capo*, i.e. `base_fret + capo_fret` frets above the
+  by its own fret count, so the true sounding position is `root_fret`
+  frets *above the capo*, i.e. `root_fret + capo_fret` frets above the
   string's unclamped open pitch).
 
   Returns one of the twelve Portuguese chromatic note names (`"Dó"`,
@@ -336,7 +343,8 @@ defmodule Ponteio.Chords do
           String.t()
   def root_note_name(chord_shape, base_fret, capo_fret) do
     open_string_index = Map.fetch!(@standard_tuning, chord_shape.root_string)
-    note_index = Integer.mod(open_string_index + base_fret + capo_fret, 12)
+    root_relative_fret = Enum.at(chord_shape.relative_frets, chord_shape.root_string - 1)
+    note_index = Integer.mod(open_string_index + root_relative_fret + base_fret + capo_fret, 12)
 
     Enum.at(@note_names, note_index)
   end
