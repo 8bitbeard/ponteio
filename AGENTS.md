@@ -56,6 +56,16 @@ Regras:
 - O `release-please` lê os commits desde a última release, decide a versão semântica (major/minor/patch) a partir dos Conventional Commits, atualiza o `CHANGELOG.md` e, ao mergear o PR de release que ele mesmo abre, cria a tag e a GitHub Release correspondente.
 - Configuração em `release-please-config.json` e `.release-please-manifest.json`, na raiz do repositório.
 
+## Ambiente de execução: sempre via Docker Compose
+
+O banco (`db`) e a aplicação (`app`) só sobem **juntos**, pelo `docker-compose.yml` da raiz. Isso vale para qualquer teste ou verificação, feito por pessoas ou por agentes de IA.
+
+- Suba o ambiente com `docker compose up -d` e derrube com `docker compose down`. Nunca suba só um dos dois serviços.
+- Não crie containers avulsos com `docker run` para o banco ou para a aplicação, nem rode Postgres ou Elixir fora do Compose.
+- Comandos `mix` (testes, `precommit`, migrations, seeds, codegen) rodam dentro do container da aplicação: `docker compose exec app mix test`, ou com `-e MIX_ENV=test` quando o comando exigir.
+- Antes de subir o ambiente, confira com `docker ps` se não há outro container do banco ou da aplicação rodando. Se houver, pare-o antes.
+- `docker compose down -v` apaga os volumes, e com eles o banco inteiro. Só use quando a intenção for começar com o banco vazio.
+
 ---
 
 ## Diretrizes de Desenvolvimento Phoenix/Elixir
