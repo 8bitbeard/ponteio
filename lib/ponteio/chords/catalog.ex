@@ -28,11 +28,14 @@ defmodule Ponteio.Chords.Catalog do
                %{hand_position | complexity: Complexity.score(hand_position)}
              end)
 
-  @index Index.build(@positions)
+  @hand_index Index.build(@positions, :hand)
+  @chord_index Index.build(@positions, :chord)
 
   @spec all() :: [HandPosition.t()]
   def all, do: @positions
 
-  @spec index() :: Index.t()
-  def index, do: @index
+  @doc "The index for a matching mode (see `Ponteio.Chords.HandPosition`)."
+  @spec index(HandPosition.mode()) :: Index.t()
+  def index(:hand), do: @hand_index
+  def index(:chord), do: @chord_index
 end

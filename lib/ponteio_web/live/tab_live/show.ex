@@ -7,7 +7,11 @@ defmodule PonteioWeb.TabLive.Show do
   alias Ponteio.Tablatures.NoteNotation
 
   @max_alternatives 20
-  @measure_load [:notes, :hand_positions]
+  @measure_load [:notes, :hand_positions, :chord_positions]
+  @modes [
+    hand: {"Posição de mão", "Dedos podem ser levantados para a corda soar solta."},
+    chord: {"Formato de acorde", "O formato completo do acorde fica pressionado."}
+  ]
 
   @impl true
   def mount(%{"id" => id}, _session, socket) do
@@ -15,7 +19,8 @@ defmodule PonteioWeb.TabLive.Show do
 
     {:ok,
      socket
-     |> assign(tab: tab, page_title: tab.title, focused_measure_id: nil, note_errors: %{})
+     |> assign(tab: tab, page_title: tab.title, mode: :hand, modes: @modes)
+     |> assign(focused_measure_id: nil, note_errors: %{})
      |> stream(:measures, Tablatures.list_measures!(tab.id))}
   end
 
@@ -35,6 +40,23 @@ defmodule PonteioWeb.TabLive.Show do
           <.button navigate={~p"/tabs"}>Voltar</.button>
         </:actions>
       </.header>
+
+      <div id="mode-picker" class="mb-4 flex flex-wrap items-center gap-3">
+        <div role="tablist" class="tabs tabs-box">
+          <button
+            :for={{mode, {label, _description}} <- @modes}
+            id={"mode-#{mode}"}
+            type="button"
+            role="tab"
+            phx-click="set_mode"
+            phx-value-mode={mode}
+            class={["tab", @mode == mode && "tab-active"]}
+          >
+            {label}
+          </button>
+        </div>
+        <p class="text-sm text-base-content/70">{@modes[@mode] |> elem(1)}</p>
+      </div>
 
       <div id="measures" phx-update="stream" class="space-y-4">
         <p id="measures-empty" class="hidden only:block text-sm text-base-content/60">
@@ -97,7 +119,12 @@ defmodule PonteioWeb.TabLive.Show do
           </.form>
           <p :if={@note_errors[measure.id]} class="text-sm text-error">{@note_errors[measure.id]}</p>
 
-          <.analysis measure_id={measure.id} combinations={measure.hand_positions} />
+          <.analysis
+            measure_id={measure.id}
+            combinations={
+              if @mode == :hand, do: measure.hand_positions, else: measure.chord_positions
+            }
+          />
         </section>
       </div>
 
@@ -164,6 +191,13 @@ defmodule PonteioWeb.TabLive.Show do
   end
 
   @impl true
+  def handle_event("set_mode", %{"mode" => mode}, socket) when mode in ["hand", "chord"] do
+    {:noreply,
+     socket
+     |> assign(mode: String.to_existing_atom(mode), focused_measure_id: nil)
+     |> stream(:measures, Tablatures.list_measures!(socket.assigns.tab.id), reset: true)}
+  end
+
   def handle_event("add_measure", _params, socket) do
     measure = Tablatures.add_measure!(socket.assigns.tab.id, load: @measure_load)
 

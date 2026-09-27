@@ -27,7 +27,7 @@ defmodule Ponteio.Tablatures.Measure do
     read :for_tab do
       argument :tab_id, :uuid, allow_nil?: false
       filter expr(tab_id == ^arg(:tab_id))
-      prepare build(sort: [position: :asc], load: [:notes, :hand_positions])
+      prepare build(sort: [position: :asc], load: [:notes, :hand_positions, :chord_positions])
     end
 
     read :get_in_tab do
@@ -35,7 +35,7 @@ defmodule Ponteio.Tablatures.Measure do
       argument :tab_id, :uuid, allow_nil?: false
       argument :id, :uuid, allow_nil?: false
       filter expr(tab_id == ^arg(:tab_id) and id == ^arg(:id))
-      prepare build(load: [:notes, :hand_positions])
+      prepare build(load: [:notes, :hand_positions, :chord_positions])
     end
 
     create :create do
@@ -97,8 +97,15 @@ defmodule Ponteio.Tablatures.Measure do
   calculations do
     calculate :hand_positions,
               {:array, :struct},
-              Ponteio.Tablatures.Calculations.HandPositions do
-      description "The measure split into hand positions by `Ponteio.Chords.MeasureAnalyzer`."
+              {Ponteio.Tablatures.Calculations.HandPositions, mode: :hand} do
+      description "Hand positions where fingers may lift and let their strings ring open (the default view)."
+      constraints items: [instance_of: MeasureAnalyzer.Combination]
+    end
+
+    calculate :chord_positions,
+              {:array, :struct},
+              {Ponteio.Tablatures.Calculations.HandPositions, mode: :chord} do
+      description "Hand positions holding each chord shape in full."
       constraints items: [instance_of: MeasureAnalyzer.Combination]
     end
   end

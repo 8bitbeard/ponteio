@@ -1,8 +1,8 @@
 defmodule Ponteio.Chords.Matcher do
   @moduledoc """
   Decides which hand positions can play a window of tablature notes without
-  moving the hand: every note `{string, fret}` must equal the position's
-  `playable` fret on that string (see `Ponteio.Chords.HandPosition`).
+  moving the hand: every note `{string, fret}` must be one of the frets that
+  string can sound in the chosen mode (see `Ponteio.Chords.HandPosition`).
   """
 
   alias Ponteio.Chords.HandPosition
@@ -13,9 +13,11 @@ defmodule Ponteio.Chords.Matcher do
           required(:fret) => non_neg_integer()
         }
 
-  @spec matches?([note()], HandPosition.t()) :: boolean()
-  def matches?(notes, %HandPosition{playable: playable}) do
-    Enum.all?(notes, fn %{string: string, fret: fret} -> Map.fetch!(playable, string) == fret end)
+  @spec matches?([note()], HandPosition.t(), HandPosition.mode()) :: boolean()
+  def matches?(notes, %HandPosition{} = position, mode) do
+    Enum.all?(notes, fn %{string: string, fret: fret} ->
+      fret in HandPosition.playable_frets(position, string, mode)
+    end)
   end
 
   @doc """

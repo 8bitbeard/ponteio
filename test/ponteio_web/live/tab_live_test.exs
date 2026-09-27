@@ -50,6 +50,20 @@ defmodule PonteioWeb.TabLiveTest do
       [first_note | _] = Tablatures.get_measure!(tab.id, measure.id).notes
 
       assert has_element?(view, "#note-#{first_note.id}", "E3")
+      assert has_element?(view, "#analysis-#{measure.id}", "1 posições de mão")
+    end
+
+    test "switching to chord shapes shows the full-chord analysis", %{conn: conn} do
+      tab = tab!()
+      measure = Tablatures.add_measure!(tab.id)
+      Tablatures.add_notes!(measure, "E3 D0 G2 E3 B0 D0 G2 A0 D2 G2 A0 B0 D2 G2")
+      {:ok, view, _html} = live(conn, ~p"/tabs/#{tab}")
+
+      refute has_element?(view, "#analysis-#{measure.id}", "Gadd9")
+
+      view |> element("#mode-chord") |> render_click()
+
+      assert has_element?(view, "#mode-chord.tab-active")
       assert has_element?(view, "#analysis-#{measure.id}", "Gadd9")
       assert has_element?(view, "#analysis-#{measure.id}", "Asus2")
     end

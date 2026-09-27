@@ -46,14 +46,15 @@ defmodule Ponteio.TablaturesTest do
     assert Tablatures.get_measure!(tab.id, measure.id).notes == []
   end
 
-  test "hand_positions runs the chord engine on the measure's notes" do
+  test "hand_positions and chord_positions run the chord engine in each mode" do
     tab = tab!()
     measure = Tablatures.add_measure!(tab.id)
     Tablatures.add_notes!(measure, "E3 D0 G2 E3 B0 D0 G2 A0 D2 G2 A0 B0 D2 G2")
 
-    [easiest | _] = Tablatures.get_measure!(tab.id, measure.id).hand_positions
+    measure = Tablatures.get_measure!(tab.id, measure.id)
 
-    assert length(easiest.segments) == 2
+    assert [%{segments: [_]} | _] = measure.hand_positions
+    assert [%{segments: [_, _]} | _] = measure.chord_positions
   end
 
   test "destroy_note removes only that note" do

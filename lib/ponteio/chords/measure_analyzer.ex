@@ -59,8 +59,12 @@ defmodule Ponteio.Chords.MeasureAnalyzer do
 
   Options:
 
+    * `:mode` — `:hand` (default: fingers may lift, letting their strings ring
+      open) or `:chord` (the full chord shape is held); see
+      `Ponteio.Chords.HandPosition`;
     * `:max_combinations` — how many tied splits to return (default #{@default_max_combinations});
-    * `:index` — the catalog index to search (default `Ponteio.Chords.Catalog.index/0`).
+    * `:index` — the index to search, overriding `:mode` (default
+      `Ponteio.Chords.Catalog.index(mode)`).
   """
   @spec analyze([map()], keyword()) :: [Combination.t()]
   def analyze(notes, opts \\ [])
@@ -69,7 +73,9 @@ defmodule Ponteio.Chords.MeasureAnalyzer do
 
   def analyze(notes, opts) do
     max_combinations = Keyword.get(opts, :max_combinations, @default_max_combinations)
-    index = Keyword.get_lazy(opts, :index, &Catalog.index/0)
+
+    index =
+      Keyword.get_lazy(opts, :index, fn -> Catalog.index(Keyword.get(opts, :mode, :hand)) end)
 
     notes = notes |> Enum.sort_by(& &1.position) |> List.to_tuple()
     count = tuple_size(notes)
@@ -89,6 +95,58 @@ defmodule Ponteio.Chords.MeasureAnalyzer do
           |> Enum.sum(),
         total_complexity: total_complexity
       }
+    end)
+  end
+
+  @doc """
+  Analyzes several measures at once (same options as `analyze/2`), returning
+  one result per measure, in order.
+
+  A measure's analysis depends only on its sequence of `{string, fret}` pairs,
+  and songs repeat passages a lot, so each distinct sequence is analyzed once.
+  The shared result is then bound to each measure's own notes: segments point
+  at that measure's notes and positions.
+  """
+  @spec analyze_all([[map()]], keyword()) :: [[Combination.t()]]
+  def analyze_all(measures, opts \\ []) do
+    measures = Enum.map(measures, &Enum.sort_by(&1, fn note -> note.position end))
+
+    by_sequence =
+      measures
+      |> Enum.map(&sequence/1)
+      |> Enum.uniq()
+      |> Map.new(&{&1, analyze(sequence_notes(&1), opts)})
+
+    Enum.map(measures, &bind(Map.fetch!(by_sequence, sequence(&1)), &1))
+  end
+
+  defp sequence(notes), do: Enum.map(notes, &{&1.string, &1.fret})
+
+  defp sequence_notes(sequence) do
+    sequence
+    |> Enum.with_index()
+    |> Enum.map(fn {{string, fret}, index} -> %{string: string, fret: fret, position: index} end)
+  end
+
+  # The shared result was computed on `sequence_notes/1`, whose positions are
+  # the note indexes, so each segment's positions say which notes it covers.
+  defp bind(combinations, notes) do
+    notes = List.to_tuple(notes)
+
+    Enum.map(combinations, fn combination ->
+      segments =
+        Enum.map(combination.segments, fn segment ->
+          bound = for i <- segment.start_position..segment.end_position, do: elem(notes, i)
+
+          %{
+            segment
+            | notes: bound,
+              start_position: hd(bound).position,
+              end_position: List.last(bound).position
+          }
+        end)
+
+      %{combination | segments: segments}
     end)
   end
 
