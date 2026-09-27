@@ -38,3 +38,6 @@ npm-debug.log
 
 # Local environment variables (may contain secrets)
 .env
+
+# Local seed tablatures (may be copyrighted; see priv/repo/seeds/tabs/README.md)
+/priv/repo/seeds/tabs/*.txt
