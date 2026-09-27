@@ -1,79 +1,73 @@
 defmodule Ponteio.Tablatures.Measure do
-  @moduledoc """
-  A "compasso" (bar) — the unit the chord-suggestion engine analyzes
-  (PRD §6.3, §6.4; SDD §2.2).
-
-  This resource is normatively specified by SDD §2.2 as part of the data
-  model that issue #12 ("Inserir marcadores de compasso") builds its
-  "+Adicionar compasso" / "quebrar compasso" UI on top of. It's introduced
-  here, ahead of #12, purely as the technical prerequisite `Note`
-  (`belongs_to :measure`) needs to exist and compile — `Note` is this
-  issue's (#11) actual "Resource novo".
-
-  Consistent with issues #11-#13's "Persistência" notes (each explicitly
-  defers Measure/Note persistence to `upsert_measure_notes`, issue #14),
-  no LiveView in this issue creates `Measure` rows against the database —
-  the editor keeps compassos/notes as local `Phoenix.LiveView` assigns
-  until #14's bulk save exists. The `:create`/`:read`/`:update`/`:destroy`
-  actions and policy below exist so the resource is usable (and testable
-  in isolation, and ready for #14 to call), not because anything calls
-  them yet.
-
-  `has_many :chord_segments` (issue #22, "Visualizar tablatura completa
-  com acordes sobrepostos") is the reverse side of `ChordSegment.belongs_to
-  :measure` (issue #20) — added only once `TabLive.Study` needed to
-  traverse `tab -> measures -> chord_segments -> chord_suggestions` in a
-  single `Ash.load!/3` call (SDD §4); nothing before it ever loaded a
-  `Measure`'s segments this way.
-  """
-
   use Ash.Resource,
     otp_app: :ponteio,
     domain: Ponteio.Tablatures,
-    data_layer: AshPostgres.DataLayer,
-    authorizers: [Ash.Policy.Authorizer]
+    data_layer: AshPostgres.DataLayer
+
+  require Ash.Query
+
+  alias Ponteio.Chords.MeasureAnalyzer
 
   postgres do
     table "measures"
     repo Ponteio.Repo
 
     references do
-      # Deleting a `Tab` removes its whole `Measure`/`Note` tree at the
-      # database level (`Tab`'s moduledoc/issue #9's stated expectation for
-      # whichever dependent resource landed first).
       reference :tab, on_delete: :delete
+    end
+
+    custom_indexes do
+      index [:tab_id, :position]
     end
   end
 
   actions do
-    defaults [:read, :destroy]
+    defaults [:read]
+
+    read :for_tab do
+      argument :tab_id, :uuid, allow_nil?: false
+      filter expr(tab_id == ^arg(:tab_id))
+      prepare build(sort: [position: :asc], load: [:notes, :hand_positions, :chord_positions])
+    end
+
+    read :get_in_tab do
+      get? true
+      argument :tab_id, :uuid, allow_nil?: false
+      argument :id, :uuid, allow_nil?: false
+      filter expr(tab_id == ^arg(:tab_id) and id == ^arg(:id))
+      prepare build(load: [:notes, :hand_positions, :chord_positions])
+    end
 
     create :create do
-      primary? true
-      accept [:tab_id, :position]
+      description "Appends a measure to the end of its tab."
+      accept [:tab_id]
+      change Ponteio.Tablatures.Changes.AppendMeasure
     end
 
-    update :update do
-      primary? true
-      accept [:position]
+    update :add_notes do
+      description "Appends notes written as `E3 D0 e2` to the end of the measure."
+      require_atomic? false
+      argument :notes, :string, allow_nil?: false
+      change Ponteio.Tablatures.Changes.AddNotes
     end
-  end
 
-  policies do
-    # Same shape as `Tab`'s policies (SDD §2.2, issue #10): a `Measure` is
-    # only ever accessible/mutable through the `tab` it belongs to, and
-    # that `tab` must belong to the actor. There is no `user_id` column
-    # here to compare directly — `relates_to_actor_via/1` walks the
-    # `[:tab, :user]` relationship path instead (issue #10's documented
-    # pattern for dependent resources).
-    #
-    # This also covers `:create`: Ash resolves a relationship-based filter
-    # check on a create action as a post-insert `SELECT ... WHERE pkey =
-    # inserted.id AND <filter>` inside the same transaction, rolling back
-    # if it doesn't match (Ash's documented "filter creates" behavior) — no
-    # separate `relating_to_actor` check needed for the submitted `tab_id`.
-    policy action_type([:create, :read, :update, :destroy]) do
-      authorize_if relates_to_actor_via([:tab, :user])
+    update :shift_back do
+      description "Moves a measure one position earlier, used to close the gap of a deleted one."
+      change atomic_update(:position, expr(position - 1))
+    end
+
+    destroy :destroy do
+      description "Deletes a measure and renumbers the ones after it."
+      primary? true
+      require_atomic? false
+
+      change after_action(fn _changeset, measure, _context ->
+               __MODULE__
+               |> Ash.Query.filter(tab_id == ^measure.tab_id and position > ^measure.position)
+               |> Ash.bulk_update!(:shift_back, %{}, strategy: :atomic)
+
+               {:ok, measure}
+             end)
     end
   end
 
@@ -83,8 +77,7 @@ defmodule Ponteio.Tablatures.Measure do
     attribute :position, :integer do
       allow_nil? false
       public? true
-      constraints min: 1
-      description "Ordering of this measure within the tablature (PRD §6.3, SDD §2.2)."
+      constraints min: 0
     end
 
     timestamps()
@@ -93,16 +86,31 @@ defmodule Ponteio.Tablatures.Measure do
   relationships do
     belongs_to :tab, Ponteio.Tablatures.Tab do
       allow_nil? false
+      public? true
     end
 
-    has_many :notes, Ponteio.Tablatures.Note
+    has_many :notes, Ponteio.Tablatures.Note do
+      sort position: :asc
+    end
+  end
 
-    # The reverse side of `ChordSegment.belongs_to :measure` (issue #20).
-    # Nothing needed to traverse this direction until issue #22 ("Visualizar
-    # tablatura completa com acordes sobrepostos"), which loads a tab's
-    # whole `measures -> chord_segments -> chord_suggestions` tree in one
-    # `Ash.load!/3` call (SDD §4) — that traversal is only possible with
-    # this relationship declared here.
-    has_many :chord_segments, Ponteio.Tablatures.ChordSegment
+  calculations do
+    calculate :hand_positions,
+              {:array, :struct},
+              {Ponteio.Tablatures.Calculations.HandPositions, mode: :hand} do
+      description "Hand positions where fingers may lift and let their strings ring open (the default view)."
+      constraints items: [instance_of: MeasureAnalyzer.Combination]
+    end
+
+    calculate :chord_positions,
+              {:array, :struct},
+              {Ponteio.Tablatures.Calculations.HandPositions, mode: :chord} do
+      description "Hand positions holding each chord shape in full."
+      constraints items: [instance_of: MeasureAnalyzer.Combination]
+    end
+  end
+
+  aggregates do
+    max :last_note_position, :notes, :position
   end
 end

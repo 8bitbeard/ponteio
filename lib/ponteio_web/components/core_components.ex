@@ -29,7 +29,6 @@ defmodule PonteioWeb.CoreComponents do
   use Phoenix.Component
   use Gettext, backend: PonteioWeb.Gettext
 
-  alias Phoenix.HTML.Form
   alias Phoenix.LiveView.JS
 
   @doc """
@@ -209,7 +208,7 @@ defmodule PonteioWeb.CoreComponents do
   def input(%{type: "checkbox"} = assigns) do
     assigns =
       assign_new(assigns, :checked, fn ->
-        Form.normalize_value("checkbox", assigns[:value])
+        Phoenix.HTML.Form.normalize_value("checkbox", assigns[:value])
       end)
 
     ~H"""
@@ -252,7 +251,7 @@ defmodule PonteioWeb.CoreComponents do
           {@rest}
         >
           <option :if={@prompt} value="">{@prompt}</option>
-          {Form.options_for_select(@options, @value)}
+          {Phoenix.HTML.Form.options_for_select(@options, @value)}
         </select>
       </label>
       <.error :for={msg <- @errors}>{msg}</.error>
@@ -273,7 +272,7 @@ defmodule PonteioWeb.CoreComponents do
             @errors != [] && (@error_class || "textarea-error")
           ]}
           {@rest}
-        >{Form.normalize_value("textarea", @value)}</textarea>
+        >{Phoenix.HTML.Form.normalize_value("textarea", @value)}</textarea>
       </label>
       <.error :for={msg <- @errors}>{msg}</.error>
     </div>
@@ -290,7 +289,7 @@ defmodule PonteioWeb.CoreComponents do
           type={@type}
           name={@name}
           id={@id}
-          value={Form.normalize_value(@type, @value)}
+          value={Phoenix.HTML.Form.normalize_value(@type, @value)}
           class={[
             @class || "w-full input",
             @errors != [] && (@error_class || "input-error")

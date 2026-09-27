@@ -1,10 +1,6 @@
 defmodule PonteioWeb.Router do
   use PonteioWeb, :router
 
-  use AshAuthentication.Phoenix.Router
-
-  import AshAuthentication.Plug.Helpers
-
   pipeline :browser do
     plug :accepts, ["html"]
     plug :fetch_session
@@ -12,52 +8,10 @@ defmodule PonteioWeb.Router do
     plug :put_root_layout, html: {PonteioWeb.Layouts, :root}
     plug :protect_from_forgery
     plug :put_secure_browser_headers
-    plug :load_from_session
   end
 
   pipeline :api do
     plug :accepts, ["json"]
-    plug :load_from_bearer
-    plug :set_actor, :user
-  end
-
-  scope "/", PonteioWeb do
-    pipe_through :browser
-
-    ash_authentication_live_session :authenticated_routes do
-      # in each liveview, add one of the following at the top of the module:
-      #
-      # If an authenticated user must be present:
-      # on_mount {PonteioWeb.LiveUserAuth, :live_user_required}
-      #
-      # If an authenticated user *may* be present:
-      # on_mount {PonteioWeb.LiveUserAuth, :live_user_optional}
-      #
-      # If an authenticated user must *not* be present:
-      # on_mount {PonteioWeb.LiveUserAuth, :live_no_user}
-
-      # `tabs` routes (SDD §7) require an authenticated session
-      # (`on_mount {PonteioWeb.LiveUserAuth, :live_user_required}` inside each
-      # LiveView) — see issue #3.
-      live "/tabs", TabLive.Index, :index
-
-      # Creation flow (issue #6, SDD §7) — shares `TabLive.Editor` with the
-      # edit route below (issue #8), differentiated by `live_action`.
-      live "/tabs/new", TabLive.Editor, :new
-
-      # Metadata edit flow (issue #8, SDD §7) — same `TabLive.Editor`
-      # module as `/tabs/new`, `live_action: :edit`.
-      live "/tabs/:id/edit", TabLive.Editor, :edit
-
-      # Study mode (issue #22, SDD §7) — read-only, full tablature with
-      # chord suggestions overlaid; `TabLive.Index`'s "Estudar" shortcut
-      # (issue #7) has pointed here since before this route existed.
-      live "/tabs/:id/study", TabLive.Study, :show
-
-      # Authenticated password change (issue #4, third acceptance criterion) —
-      # same `on_mount` guard as above, declared inside the LiveView itself.
-      live "/account/password", UserLive.ChangePassword, :edit
-    end
   end
 
   scope "/", PonteioWeb do
@@ -65,35 +19,8 @@ defmodule PonteioWeb.Router do
 
     get "/", PageController, :home
 
-    # Also generates the Google OAuth2 request/callback routes (issue #5,
-    # SDD §7) for the `google` strategy on `Ponteio.Accounts.User`:
-    # `GET /auth/user/google` (starts the flow) and
-    # `GET /auth/user/google/callback` (the URI to register in the Google
-    # Cloud Console — see the README).
-    auth_routes AuthController, Ponteio.Accounts.User, path: "/auth"
-
-    sign_out_route AuthController, "/sign-out",
-      overrides: [PonteioWeb.AuthOverrides, AshAuthentication.Phoenix.Overrides.Default]
-
-    # Remove these if you'd like to use your own authentication views
-    sign_in_route register_path: "/register",
-                  reset_path: "/reset",
-                  auth_routes_prefix: "/auth",
-                  on_mount: [{PonteioWeb.LiveUserAuth, :live_no_user}],
-                  gettext_fn: {PonteioWeb.AuthOverrides, :translate},
-                  overrides: [
-                    PonteioWeb.AuthOverrides,
-                    AshAuthentication.Phoenix.Overrides.Default
-                  ]
-
-    # Remove this if you do not want to use the reset password feature
-    reset_route auth_routes_prefix: "/auth",
-                overrides: [PonteioWeb.AuthOverrides, AshAuthentication.Phoenix.Overrides.Default]
-
-    # Remove this if you do not use the confirmation strategy
-    confirm_route Ponteio.Accounts.User, :confirm_new_user,
-      auth_routes_prefix: "/auth",
-      overrides: [PonteioWeb.AuthOverrides, AshAuthentication.Phoenix.Overrides.Default]
+    live "/tabs", TabLive.Index, :index
+    live "/tabs/:id", TabLive.Show, :show
   end
 
   # Other scopes may use custom stacks.

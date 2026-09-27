@@ -25,7 +25,7 @@ RUN apt-get update -qq \
     && update-ca-certificates
 
 ## Usuário não-root: evita que arquivos gerados dentro do container (deps,
-## _build, migrations, snapshots do Ash etc.) fiquem com dono `root` no host
+## _build, migrations etc.) fiquem com dono `root` no host
 ## através do bind mount `.:/app` do docker-compose.yml. UID/GID default
 ## (1000) casam com o usuário padrão da maioria das distros Linux; se o seu
 ## host usar outro UID/GID, sobrescreva via `--build-arg UID=$(id -u) --build-arg GID=$(id -g)`.

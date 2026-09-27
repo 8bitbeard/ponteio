@@ -35,11 +35,9 @@ ponteio-*.tar
 npm-debug.log
 /assets/node_modules/
 
-# Dialyzer PLT cache.
-/priv/plts/
 
-# Local environment overrides for docker-compose (copy of .env.example).
+# Local environment variables (may contain secrets)
 .env
-.env.*
-!.env.example
 
+# Local seed tablatures (may be copyrighted; see priv/repo/seeds/tabs/README.md)
+/priv/repo/seeds/tabs/*.txt

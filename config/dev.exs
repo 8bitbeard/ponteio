@@ -25,7 +25,7 @@ config :ponteio, PonteioWeb.Endpoint,
   check_origin: false,
   code_reloader: true,
   debug_errors: true,
-  secret_key_base: "XeQ/paQUSPYAGBpzMhom8SgRXmBnXEUtKxzwwkaaCACMwYs2iKwB307JDPoDmGOX",
+  secret_key_base: "qNhPl7HbXdsxxiSTMnQWTK+Eu67usdfgXr4HXVrmHFEFRH3zHddUvcgDqTsCtHrQ",
   watchers: [
     esbuild: {Esbuild, :install_and_run, [:ponteio, ~w(--sourcemap=inline --watch)]},
     tailwind: {Tailwind, :install_and_run, [:ponteio, ~w(--watch)]}
@@ -55,7 +55,7 @@ config :ponteio, PonteioWeb.Endpoint,
 # different ports.
 
 # Enable dev routes for dashboard and mailbox
-config :ponteio, dev_routes: true, token_signing_secret: "uITClbbRRrXU1nNRdMgB++p1ljnl8+Vb"
+config :ponteio, dev_routes: true
 
 # Do not include metadata nor timestamps in development logs
 config :logger, :default_formatter, format: "[$level] $message\n"

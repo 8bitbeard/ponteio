@@ -12,19 +12,6 @@ defmodule Ponteio.MixProject do
       deps: deps(),
       compilers: [:phoenix_live_view] ++ Mix.compilers(),
       listeners: [Phoenix.CodeReloader],
-      test_coverage: [tool: ExCoveralls, summary: [threshold: 60]],
-      preferred_cli_env: [
-        coveralls: :test,
-        "coveralls.detail": :test,
-        "coveralls.post": :test,
-        "coveralls.html": :test,
-        "coveralls.json": :test,
-        dialyzer: :test
-      ],
-      dialyzer: [
-        plt_file: {:no_warn, "priv/plts/dialyzer.plt"},
-        plt_add_apps: [:mix, :ex_unit]
-      ],
       consolidate_protocols: Mix.env() != :dev
     ]
   end
@@ -54,17 +41,11 @@ defmodule Ponteio.MixProject do
   # Type `mix help deps` for examples and options.
   defp deps do
     [
-      {:bcrypt_elixir, "~> 3.0"},
-      {:picosat_elixir, "~> 0.2"},
-      {:ash_authentication, "~> 4.0"},
-      {:ash_authentication_phoenix, "~> 2.0"},
-      {:ash_phoenix, "~> 2.0"},
       {:sourceror, "~> 1.8", only: [:dev, :test]},
+      {:ash_phoenix, "~> 2.0"},
       {:ash_postgres, "~> 2.0"},
       {:ash, "~> 3.0"},
-      {:ash_oban, "~> 0.8"},
-      {:oban, "~> 2.19"},
-      {:phoenix, "~> 1.8.14"},
+      {:phoenix, "~> 1.8.15"},
       {:phoenix_ecto, "~> 4.5"},
       {:ecto_sql, "~> 3.13"},
       {:postgrex, ">= 0.0.0"},
@@ -97,9 +78,6 @@ defmodule Ponteio.MixProject do
       {:jason, "~> 1.2"},
       {:dns_cluster, "~> 0.2.0"},
       {:bandit, "~> 1.5"},
-      {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
-      {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
-      {:excoveralls, "~> 0.18", only: :test},
       {:igniter, "~> 0.6", only: [:dev, :test], runtime: false}
     ]
   end
@@ -123,13 +101,7 @@ defmodule Ponteio.MixProject do
         "esbuild ponteio --minify",
         "phx.digest"
       ],
-      precommit: [
-        "compile --warnings-as-errors",
-        "deps.unlock --unused",
-        "format",
-        "credo --strict",
-        "test"
-      ]
+      precommit: ["compile --warnings-as-errors", "deps.unlock --unused", "format", "test"]
     ]
   end
 end

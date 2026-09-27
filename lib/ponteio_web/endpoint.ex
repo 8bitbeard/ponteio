@@ -7,7 +7,7 @@ defmodule PonteioWeb.Endpoint do
   @session_options [
     store: :cookie,
     key: "_ponteio_key",
-    signing_salt: "lkLDX88b",
+    signing_salt: "LTznRJQE",
     same_site: "Lax"
   ]
 

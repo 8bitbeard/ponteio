@@ -1,126 +1,85 @@
 defmodule PonteioWeb.TabLive.Index do
-  @moduledoc """
-  `GET /tabs` — "Minhas tablaturas" (issue #7, PRD §6.2, SDD §4, §7).
-
-  Lists the authenticated actor's own tablatures via
-  `Ponteio.Tablatures.list_tabs_for_user/1` (SDD §5) — scoping to the owner
-  comes entirely from the `Tab` resource's read policy (SDD §2.2), not from
-  a manual filter here.
-
-  The row's "Editar" shortcut uses `~p"/tabs/\#{tab.id}/edit"` now that
-  issue #8 ("Editar metadados") added that route. "Estudar" now does the
-  same with `~p"/tabs/\#{tab.id}/study"`, since issue #22 ("Visualizar
-  tablatura completa") added that route — `~p` is compile-time verified
-  against the router, so this only compiles now that the route exists.
-
-  "Excluir" (issue #9, PRD §6.2) requires confirmation via the browser's
-  native `data-confirm` prompt (an explicit acceptance criterion) before it
-  even pushes the `"delete"` LiveView event, then deletes through
-  `Ponteio.Tablatures.delete_tab/2` (SDD §2.2) — scoped to the
-  authenticated actor both by fetching the record through the `Tab`
-  resource's `:read` policy and by its own `:destroy` policy, so a forged
-  id for another user's tablature (a `phx-click`/`phx-value-id` pair a
-  malicious client could send regardless of what's actually rendered in
-  their own row list) never succeeds or deletes the wrong tablature.
-
-  Issue #10 ("Isolamento de tablaturas por usuário") replaced the earlier
-  `Ash.get!/3` lookup here — which let a forged id crash the LiveView
-  process entirely — with an explicit `Ash.get/3` match, so that case ends
-  in a flash error instead, the same "authorization denial, never a silent
-  crash" treatment `TabLive.Editor` gives the equivalent `/tabs/:id/edit`
-  case.
-  """
-
   use PonteioWeb, :live_view
-
-  on_mount {PonteioWeb.LiveUserAuth, :live_user_required}
 
   alias Ponteio.Tablatures
   alias Ponteio.Tablatures.Tab
 
   @impl true
   def mount(_params, _session, socket) do
-    {:ok, tabs} = Tablatures.list_tabs_for_user(actor: socket.assigns.current_user)
-
-    {:ok, assign(socket, tabs: tabs, page_title: "Minhas tablaturas")}
+    {:ok,
+     socket
+     |> assign(:page_title, "Tablaturas")
+     |> assign(:form, new_form())
+     |> stream(:tabs, Tablatures.list_tabs!())}
   end
 
-  @impl true
-  def handle_event("delete", %{"id" => id}, socket) do
-    user = socket.assigns.current_user
-
-    case Ash.get(Tab, id, actor: user, domain: Ponteio.Tablatures) do
-      {:ok, tab} ->
-        case Tablatures.delete_tab(tab, actor: user) do
-          :ok ->
-            {:ok, tabs} = Tablatures.list_tabs_for_user(actor: user)
-
-            {:noreply,
-             socket
-             |> put_flash(:info, "Tablatura \"#{tab.title}\" excluída.")
-             |> assign(tabs: tabs)}
-
-          {:error, _error} ->
-            {:noreply, put_flash(socket, :error, "Não foi possível excluir a tablatura.")}
-        end
-
-      {:error, _error} ->
-        {:noreply,
-         put_flash(socket, :error, "Você não tem permissão para excluir esta tablatura.")}
-    end
-  end
+  defp new_form, do: Tab |> AshPhoenix.Form.for_create(:create, as: "tab") |> to_form()
 
   @impl true
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash}>
-      <div class="flex items-center justify-between gap-4">
-        <h1 class="text-2xl font-semibold">Minhas tablaturas</h1>
-        <.link navigate={~p"/tabs/new"} class="btn btn-primary">+ Nova tablatura</.link>
-      </div>
+      <.header>
+        Tablaturas
+        <:subtitle>
+          Crie uma tablatura e adicione notas para testar o motor de posições de mão.
+        </:subtitle>
+      </.header>
 
-      <p :if={@tabs == []} id="tabs-empty-state" class="text-base-content/70">
-        Você ainda não tem nenhuma tablatura.
-      </p>
+      <.form
+        for={@form}
+        id="tab-form"
+        phx-change="validate"
+        phx-submit="create"
+        class="flex items-start gap-2"
+      >
+        <div class="flex-1">
+          <.input field={@form[:title]} placeholder="Título da tablatura" autocomplete="off" />
+        </div>
+        <.button variant="primary" id="create-tab">Criar</.button>
+      </.form>
 
-      <.table :if={@tabs != []} id="tabs" rows={@tabs}>
-        <:col :let={tab} label="Título">{tab.title}</:col>
-        <:col :let={tab} label="Artista">{tab.artist}</:col>
-        <:col :let={tab} label="Capotraste">{capo_label(tab.capo_fret)}</:col>
-        <:col :let={tab} label="Status">
-          <span class={["badge", status_badge_class(tab.status)]}>
-            {status_label(tab.status)}
-          </span>
-        </:col>
-        <:action :let={tab}>
-          <.link :if={tab.status == :ready} navigate={~p"/tabs/#{tab.id}/study"} class="link">
-            Estudar
-          </.link>
-          <.link navigate={~p"/tabs/#{tab.id}/edit"} class="link">Editar</.link>
-          <.link
+      <ul id="tabs" phx-update="stream" class="divide-y divide-base-300 mt-4">
+        <li id="tabs-empty" class="hidden only:block py-3 text-sm text-base-content/60">
+          Nenhuma tablatura ainda.
+        </li>
+        <li
+          :for={{dom_id, tab} <- @streams.tabs}
+          id={dom_id}
+          class="flex items-center justify-between py-3"
+        >
+          <.link navigate={~p"/tabs/#{tab}"} class="link link-hover font-medium">{tab.title}</.link>
+          <button
+            id={"delete-tab-#{tab.id}"}
+            type="button"
             phx-click="delete"
             phx-value-id={tab.id}
-            data-confirm="Excluir esta tablatura? Essa ação não pode ser desfeita."
-            class="link text-error"
+            data-confirm="Excluir esta tablatura?"
+            class="btn btn-ghost btn-sm"
           >
-            Excluir
-          </.link>
-        </:action>
-      </.table>
-
-      <.link navigate={~p"/account/password"} class="link">Trocar senha</.link>
+            <.icon name="hero-trash" class="size-4" />
+          </button>
+        </li>
+      </ul>
     </Layouts.app>
     """
   end
 
-  defp capo_label(0), do: "Sem capo"
-  defp capo_label(fret), do: "Capo #{fret}ª"
+  @impl true
+  def handle_event("validate", %{"tab" => params}, socket) do
+    {:noreply, assign(socket, :form, AshPhoenix.Form.validate(socket.assigns.form, params))}
+  end
 
-  defp status_label(:draft), do: "Rascunho"
-  defp status_label(:analyzing), do: "Analisando"
-  defp status_label(:ready), do: "Pronta"
+  def handle_event("create", %{"tab" => params}, socket) do
+    case AshPhoenix.Form.submit(socket.assigns.form, params: params) do
+      {:ok, tab} -> {:noreply, push_navigate(socket, to: ~p"/tabs/#{tab}")}
+      {:error, form} -> {:noreply, assign(socket, :form, form)}
+    end
+  end
 
-  defp status_badge_class(:draft), do: "badge-ghost"
-  defp status_badge_class(:analyzing), do: "badge-warning"
-  defp status_badge_class(:ready), do: "badge-success"
+  def handle_event("delete", %{"id" => id}, socket) do
+    tab = Tablatures.get_tab!(id)
+    Tablatures.destroy_tab!(tab)
+    {:noreply, stream_delete(socket, :tabs, tab)}
+  end
 end
