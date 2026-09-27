@@ -57,6 +57,23 @@ defmodule Ponteio.Chords.HandPosition do
     }
   end
 
+  @doc ~S|Chord name as guitarists write it: `"B"` + `"minor"` is `"Bm"`, `"G"` + `"69"` is `"G69"`.|
+  @spec chord_name(t()) :: String.t()
+  def chord_name(%__MODULE__{key: key, suffix: "major"}), do: key
+  def chord_name(%__MODULE__{key: key, suffix: "minor"}), do: key <> "m"
+  def chord_name(%__MODULE__{key: key, suffix: suffix}), do: key <> suffix
+
+  @doc ~S|Frets from low E to high e, `x` for muted: `"x-3-2-0-1-0"` for open C.|
+  @spec diagram(t()) :: String.t()
+  def diagram(%__MODULE__{frets: frets}) do
+    Enum.map_join(6..1//-1, "-", fn string ->
+      case Map.fetch!(frets, string) do
+        nil -> "x"
+        fret -> Integer.to_string(fret)
+      end
+    end)
+  end
+
   defp by_string(low_to_high, fun) do
     low_to_high
     |> Enum.with_index()
