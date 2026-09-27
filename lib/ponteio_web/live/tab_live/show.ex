@@ -6,8 +6,11 @@ defmodule PonteioWeb.TabLive.Show do
   alias Ponteio.Tablatures
   alias Ponteio.Tablatures.NoteNotation
 
+  import PonteioWeb.TablatureComponents
+
   @max_alternatives 20
   @measure_load [:notes, :hand_positions, :chord_positions]
+  @views [tab: "Tablatura", debug: "Debug"]
   @modes [
     hand: {"Posição de mão", "Dedos podem ser levantados para a corda soar solta."},
     chord: {"Formato de acorde", "O formato completo do acorde fica pressionado."}
@@ -19,18 +22,28 @@ defmodule PonteioWeb.TabLive.Show do
 
     {:ok,
      socket
-     |> assign(tab: tab, page_title: tab.title, mode: :hand, modes: @modes)
-     |> assign(focused_measure_id: nil, note_errors: %{})
-     |> stream(:measures, Tablatures.list_measures!(tab.id))}
+     |> assign(tab: tab, page_title: tab.title, mode: :hand, modes: @modes, views: @views)
+     |> assign(focused_measure_id: nil, note_errors: %{}, measures: [])
+     |> stream(:measures, [])}
+  end
+
+  @impl true
+  def handle_params(params, _uri, socket) do
+    view = if params["view"] == "debug", do: :debug, else: :tab
+
+    {:noreply,
+     socket
+     |> assign(view: view, focused_measure_id: nil)
+     |> load_measures()}
   end
 
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash}>
+    <Layouts.app flash={@flash} wide>
       <.header>
         {@tab.title}
-        <:subtitle>
+        <:subtitle :if={@view == :debug}>
           Notas no formato corda + casa, separadas por espaço: <code>E3 D0 G2 e2</code>
           (<code>E</code>
           = Mi grave, <code>e</code>
@@ -40,6 +53,18 @@ defmodule PonteioWeb.TabLive.Show do
           <.button navigate={~p"/tabs"}>Voltar</.button>
         </:actions>
       </.header>
+
+      <div id="view-picker" role="tablist" class="tabs tabs-border mb-4">
+        <.link
+          :for={{view, label} <- @views}
+          id={"view-#{view}"}
+          patch={if view == :tab, do: ~p"/tabs/#{@tab}", else: ~p"/tabs/#{@tab}?view=debug"}
+          role="tab"
+          class={["tab", @view == view && "tab-active"]}
+        >
+          {label}
+        </.link>
+      </div>
 
       <div id="mode-picker" class="mb-4 flex flex-wrap items-center gap-3">
         <div role="tablist" class="tabs tabs-box">
@@ -58,7 +83,9 @@ defmodule PonteioWeb.TabLive.Show do
         <p class="text-sm text-base-content/70">{@modes[@mode] |> elem(1)}</p>
       </div>
 
-      <div id="measures" phx-update="stream" class="space-y-4">
+      <.tablature :if={@view == :tab} measures={@measures} mode={@mode} />
+
+      <div :if={@view == :debug} id="measures" phx-update="stream" class="space-y-4">
         <p id="measures-empty" class="hidden only:block text-sm text-base-content/60">
           Nenhum compasso ainda.
         </p>
@@ -128,7 +155,12 @@ defmodule PonteioWeb.TabLive.Show do
         </section>
       </div>
 
-      <.button id="add-measure" phx-click="add_measure" class="btn btn-primary mt-4">
+      <.button
+        :if={@view == :debug}
+        id="add-measure"
+        phx-click="add_measure"
+        class="btn btn-primary mt-4"
+      >
         <.icon name="hero-plus" class="size-4" /> Adicionar compasso
       </.button>
     </Layouts.app>
@@ -195,7 +227,7 @@ defmodule PonteioWeb.TabLive.Show do
     {:noreply,
      socket
      |> assign(mode: String.to_existing_atom(mode), focused_measure_id: nil)
-     |> stream(:measures, Tablatures.list_measures!(socket.assigns.tab.id), reset: true)}
+     |> load_measures()}
   end
 
   def handle_event("add_measure", _params, socket) do
@@ -245,6 +277,20 @@ defmodule PonteioWeb.TabLive.Show do
      socket
      |> assign(:focused_measure_id, nil)
      |> stream(:measures, Tablatures.list_measures!(tab_id), reset: true)}
+  end
+
+  # The tablature needs every measure at once to lay out its lines, so it keeps
+  # them in an assign; the debug view edits measures one by one, via a stream.
+  defp load_measures(%{assigns: %{view: :tab, tab: tab}} = socket) do
+    socket
+    |> assign(:measures, Tablatures.list_measures!(tab.id))
+    |> stream(:measures, [], reset: true)
+  end
+
+  defp load_measures(%{assigns: %{tab: tab}} = socket) do
+    socket
+    |> assign(:measures, [])
+    |> stream(:measures, Tablatures.list_measures!(tab.id), reset: true)
   end
 
   defp error_message(%{errors: errors}) do

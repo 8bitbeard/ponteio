@@ -36,9 +36,40 @@ defmodule PonteioWeb.TabLiveTest do
   end
 
   describe "Show" do
+    test "opens on the tablature, with each hand position over its notes", %{conn: conn} do
+      tab = tab!()
+      measure = Tablatures.add_measure!(tab.id)
+      Tablatures.add_notes!(measure, "E3 D0 G2 E3 B0 D0 G2 A0 D2 G2 A0 B0 D2 G2")
+      {:ok, view, _html} = live(conn, ~p"/tabs/#{tab}")
+
+      assert has_element?(view, "#view-tab.tab-active")
+      refute has_element?(view, "#measures")
+
+      assert has_element?(
+               view,
+               "#tab-segment-#{measure.id}-0 svg[aria-label='Am9/G 3-0-2-2-0-0']"
+             )
+
+      refute has_element?(view, "#tab-segment-#{measure.id}-1")
+
+      view |> element("#mode-chord") |> render_click()
+
+      assert has_element?(view, "#tab-segment-#{measure.id}-0", "Gadd9")
+      assert has_element?(view, "#tab-segment-#{measure.id}-1", "Asus2")
+    end
+
+    test "a measure no position can play is marked in the tablature", %{conn: conn} do
+      tab = tab!()
+      Tablatures.add_notes!(Tablatures.add_measure!(tab.id), "E3 e20")
+      [measure] = Tablatures.list_measures!(tab.id)
+      {:ok, view, _html} = live(conn, ~p"/tabs/#{tab}")
+
+      assert has_element?(view, "#tab-measure-#{measure.id} .tab-region-miss", "sem posição")
+    end
+
     test "adding notes shows the hand positions for the measure", %{conn: conn} do
       tab = tab!()
-      {:ok, view, _html} = live(conn, ~p"/tabs/#{tab}")
+      {:ok, view, _html} = live(conn, ~p"/tabs/#{tab}?view=debug")
 
       view |> element("#add-measure") |> render_click()
       [measure] = Tablatures.list_measures!(tab.id)
@@ -57,7 +88,7 @@ defmodule PonteioWeb.TabLiveTest do
       tab = tab!()
       measure = Tablatures.add_measure!(tab.id)
       Tablatures.add_notes!(measure, "E3 D0 G2 E3 B0 D0 G2 A0 D2 G2 A0 B0 D2 G2")
-      {:ok, view, _html} = live(conn, ~p"/tabs/#{tab}")
+      {:ok, view, _html} = live(conn, ~p"/tabs/#{tab}?view=debug")
 
       refute has_element?(view, "#analysis-#{measure.id}", "Gadd9")
 
@@ -71,7 +102,7 @@ defmodule PonteioWeb.TabLiveTest do
     test "invalid notes show an error and add nothing", %{conn: conn} do
       tab = tab!()
       measure = Tablatures.add_measure!(tab.id)
-      {:ok, view, _html} = live(conn, ~p"/tabs/#{tab}")
+      {:ok, view, _html} = live(conn, ~p"/tabs/#{tab}?view=debug")
 
       html = view |> form("#add-notes-#{measure.id}-0", notes: "E3 Z1") |> render_submit()
 
@@ -83,7 +114,7 @@ defmodule PonteioWeb.TabLiveTest do
       tab = tab!()
       measure = Tablatures.add_notes!(Tablatures.add_measure!(tab.id), "E3 D0", load: [:notes])
       [first, second] = measure.notes
-      {:ok, view, _html} = live(conn, ~p"/tabs/#{tab}")
+      {:ok, view, _html} = live(conn, ~p"/tabs/#{tab}?view=debug")
 
       view |> element("#note-#{first.id}") |> render_click()
 
@@ -94,13 +125,25 @@ defmodule PonteioWeb.TabLiveTest do
     test "deleting a measure renumbers the rest", %{conn: conn} do
       tab = tab!()
       [first, _second] = for _ <- 1..2, do: Tablatures.add_measure!(tab.id)
-      {:ok, view, _html} = live(conn, ~p"/tabs/#{tab}")
+      {:ok, view, _html} = live(conn, ~p"/tabs/#{tab}?view=debug")
 
       view |> element("#delete-measure-#{first.id}") |> render_click()
 
       assert [%{position: 0}] = Tablatures.list_measures!(tab.id)
       assert render(view) =~ "Compasso 1"
       refute render(view) =~ "Compasso 2"
+    end
+
+    test "the debug tab is one click away from the tablature", %{conn: conn} do
+      tab = tab!()
+      measure = Tablatures.add_measure!(tab.id)
+      {:ok, view, _html} = live(conn, ~p"/tabs/#{tab}")
+
+      view |> element("#view-debug") |> render_click()
+
+      assert_patch(view, ~p"/tabs/#{tab}?view=debug")
+      assert has_element?(view, "#view-debug.tab-active")
+      assert has_element?(view, "#add-notes-#{measure.id}-0")
     end
   end
 end
